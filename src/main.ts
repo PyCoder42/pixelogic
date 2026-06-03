@@ -1,5 +1,5 @@
-// Placeholder entry point — replaced during implementation.
+import "./style.css";
+import { startRouter } from "./ui/router";
+
 const app = document.querySelector<HTMLDivElement>("#app");
-if (app) {
-  app.textContent = "Pixelogic — coming together…";
-}
+if (app) startRouter(app);
