@@ -27,12 +27,12 @@ export function renderMenu(host: HTMLElement): void {
         on: { click: () => navigate(`/play/${encodeURIComponent(p.id)}`) },
       },
       [
-        el("div", { class: "card-icon", text: done ? "✓" : "▦" }),
-        el("div", { class: "card-body" }, [
-          el("span", { class: "card-title", text: p.title }),
-          el("span", { class: "card-meta", text: sizeLabel(p.width, p.height) }),
+        el("div", { class: "card-top" }, [
+          el("div", { class: "card-icon", text: done ? "✓" : "▦" }),
+          el("span", { class: `chip ${meta.className}`, text: meta.label }),
         ]),
-        el("span", { class: `chip ${meta.className}`, text: meta.label }),
+        el("span", { class: "card-title", text: p.title }),
+        el("span", { class: "card-meta", text: sizeLabel(p.width, p.height) }),
       ],
     );
     if (opts.deletable) {

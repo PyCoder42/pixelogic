@@ -153,7 +153,8 @@ button {
 .puzzle-card {
   position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--s2);
   padding: var(--s3);
   background: var(--surface);
@@ -163,6 +164,12 @@ button {
   cursor: pointer;
   text-align: left;
   transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+}
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
 }
 .puzzle-card:hover {
   transform: translateY(-3px);
@@ -188,21 +195,16 @@ button {
   background: linear-gradient(135deg, var(--primary), var(--primary-deep));
   color: #fff;
 }
-.card-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
 .card-title {
   font-weight: 800;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
+  line-height: 1.2;
 }
 .card-meta {
   color: var(--ink-soft);
   font-size: 0.85rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 .card-delete {
   position: absolute;
@@ -386,7 +388,7 @@ button {
 .col-clues {
   grid-area: 1 / 2;
   display: grid;
-  grid-template-columns: repeat(var(--cols), var(--cell));
+  /* grid-template-columns is set inline (literal repeat count) */
   align-items: end;
   padding-bottom: 6px;
 }
@@ -395,8 +397,8 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  gap: 1px;
-  padding: 2px 0;
+  gap: clamp(2px, calc(var(--cell) * 0.08), 5px);
+  padding: 2px 0 4px;
 }
 .col-clue.major-col {
   box-shadow: inset -2px 0 0 -1px var(--line-major);
@@ -404,7 +406,7 @@ button {
 .row-clues {
   grid-area: 2 / 1;
   display: grid;
-  grid-template-rows: repeat(var(--rows), var(--cell));
+  /* grid-template-rows is set inline (literal repeat count) */
   justify-items: end;
   padding-right: 8px;
 }
@@ -413,11 +415,27 @@ button {
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
-  gap: calc(var(--cell) * 0.26);
+  gap: clamp(7px, calc(var(--cell) * 0.36), 16px);
   height: 100%;
+  padding-left: 4px;
 }
 .row-clue.major-row {
   box-shadow: inset 0 -2px 0 -1px var(--line-major);
+}
+/* The clue numbers live in a .clue-stack: stacked vertically for columns,
+   laid out horizontally for rows. */
+.col-clue .clue-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(2px, calc(var(--cell) * 0.08), 6px);
+}
+.row-clue .clue-stack {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: clamp(7px, calc(var(--cell) * 0.34), 16px);
 }
 .clue-num {
   font-weight: 800;
@@ -442,8 +460,7 @@ button {
 .board-cells {
   grid-area: 2 / 2;
   display: grid;
-  grid-template-columns: repeat(var(--cols), var(--cell));
-  grid-template-rows: repeat(var(--rows), var(--cell));
+  /* grid-template-columns/rows are set inline (literal repeat count) */
   border-top: 1.5px solid var(--line-major);
   border-left: 1.5px solid var(--line-major);
   border-radius: var(--r-xs);

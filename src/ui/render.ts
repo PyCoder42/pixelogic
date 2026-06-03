@@ -41,9 +41,14 @@ export function createBoard(config: BoardConfig): Board {
   const maxRowClue = Math.max(1, ...rowClues.map((c) => c.length));
   const maxColClue = Math.max(1, ...colClues.map((c) => c.length));
 
+  // NB: CSS repeat() requires a *literal* count — a custom property only works as
+  // the track size, not the repetition count — so the templates are set inline here.
+  const colsTemplate = `repeat(${width}, var(--cell))`;
+  const rowsTemplate = `repeat(${height}, var(--cell))`;
+
   const corner = el("div", { class: "board-corner" });
 
-  const colCluesEl = el("div", { class: "col-clues" });
+  const colCluesEl = el("div", { class: "col-clues", style: { gridTemplateColumns: colsTemplate } });
   const colClueEls: HTMLElement[] = [];
   for (let c = 0; c < width; c++) {
     const cell = el("div", { class: "col-clue", dataset: { c: String(c) } }, [clueNumbers(colClues[c])]);
@@ -52,7 +57,7 @@ export function createBoard(config: BoardConfig): Board {
     colClueEls.push(cell);
   }
 
-  const rowCluesEl = el("div", { class: "row-clues" });
+  const rowCluesEl = el("div", { class: "row-clues", style: { gridTemplateRows: rowsTemplate } });
   const rowClueEls: HTMLElement[] = [];
   for (let r = 0; r < height; r++) {
     const cell = el("div", { class: "row-clue", dataset: { r: String(r) } }, [clueNumbers(rowClues[r])]);
@@ -61,7 +66,10 @@ export function createBoard(config: BoardConfig): Board {
     rowClueEls.push(cell);
   }
 
-  const cellsEl = el("div", { class: "board-cells" });
+  const cellsEl = el("div", {
+    class: "board-cells",
+    style: { gridTemplateColumns: colsTemplate, gridTemplateRows: rowsTemplate },
+  });
   const cellEls: HTMLElement[][] = [];
   for (let r = 0; r < height; r++) {
     const row: HTMLElement[] = [];
