@@ -89,10 +89,15 @@ export function attachInput(board: Board, state: GameState): () => void {
   let cursorC = 0;
 
   function focusCursor(): void {
+    const prev = cellsEl.querySelector<HTMLElement>('.cell[tabindex="0"]');
+    if (prev) prev.tabIndex = -1;
     const cell = cellsEl.querySelector<HTMLElement>(
       `.cell[data-r="${cursorR}"][data-c="${cursorC}"]`,
     );
-    cell?.focus();
+    if (cell) {
+      cell.tabIndex = 0; // roving tabindex: only the focused cell is tabbable
+      cell.focus();
+    }
   }
 
   function onKeyDown(e: KeyboardEvent): void {

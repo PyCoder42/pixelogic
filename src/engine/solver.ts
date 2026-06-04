@@ -69,18 +69,30 @@ function firstUnknown(grid: Grid): [number, number] | null {
 /** Safety cap so a pathological grid can never hang the UI. */
 const NODE_CAP = 200_000;
 
+export interface SolutionCount {
+  count: number;
+  /** True if the node cap was hit before the search finished — the count is a
+   *  lower bound and uniqueness must NOT be inferred. */
+  capped: boolean;
+}
+
 /**
  * Count solutions up to `limit` via propagation interleaved with DFS on the
- * first unknown cell. Node-bounded: if the cap is hit it returns the count so
- * far (callers treat "< limit but capped" conservatively).
+ * first unknown cell. Node-bounded so a pathological grid can't hang; if the
+ * cap is hit, `capped` is set so callers never certify uniqueness they didn't
+ * actually prove.
  */
-export function countSolutions(rowClues: Clue[], colClues: Clue[], limit = 2): number {
+export function countSolutionsDetailed(rowClues: Clue[], colClues: Clue[], limit = 2): SolutionCount {
   let count = 0;
   let nodes = 0;
+  let capped = false;
 
   function dfs(grid: Grid): void {
     if (count >= limit) return;
-    if (++nodes > NODE_CAP) return;
+    if (++nodes > NODE_CAP) {
+      capped = true;
+      return;
+    }
     const res = propagate(rowClues, colClues, grid);
     if (res.status === "contradiction") return;
     if (res.status === "solved") {
@@ -99,11 +111,16 @@ export function countSolutions(rowClues: Clue[], colClues: Clue[], limit = 2): n
   }
 
   dfs(makeGrid(rowClues.length, colClues.length));
-  return count;
+  return { count, capped };
+}
+
+export function countSolutions(rowClues: Clue[], colClues: Clue[], limit = 2): number {
+  return countSolutionsDetailed(rowClues, colClues, limit).count;
 }
 
 export function hasUniqueSolution(rowClues: Clue[], colClues: Clue[]): boolean {
-  return countSolutions(rowClues, colClues, 2) === 1;
+  const { count, capped } = countSolutionsDetailed(rowClues, colClues, 2);
+  return count === 1 && !capped;
 }
 
 /**

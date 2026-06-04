@@ -1,6 +1,6 @@
 import type { Puzzle, Difficulty } from "./types";
 import { cluesForGrid } from "./clues";
-import { countSolutions } from "./solver";
+import { countSolutionsDetailed } from "./solver";
 import { grade } from "./grader";
 
 /** Parse a `#`/`.` bitmap (any non-`#` char is empty) into a boolean grid. */
@@ -22,9 +22,10 @@ export interface GridAnalysis {
 /** Analyze a solution grid for uniqueness and difficulty (used by the editor). */
 export function analyzeGrid(solution: boolean[][]): GridAnalysis {
   const { rowClues, colClues } = cluesForGrid(solution);
-  const solutionCount = countSolutions(rowClues, colClues, 2);
+  const { count, capped } = countSolutionsDetailed(rowClues, colClues, 2);
   const difficulty = grade(rowClues, colClues);
-  return { unique: solutionCount === 1, solutionCount, difficulty };
+  // If the bounded search was capped we can't certify uniqueness — treat as ambiguous.
+  return { unique: count === 1 && !capped, solutionCount: count, difficulty };
 }
 
 /**

@@ -15,6 +15,13 @@ export interface BoardConfig {
   dimSatisfied?: boolean;
   /** Adds button semantics + data attributes used by input handling. */
   interactive?: boolean;
+  /** Accessible name for the grid (interactive boards). */
+  gridLabel?: string;
+}
+
+function cellLabel(r: number, c: number, view: CellView): string {
+  const state = view === "filled" ? ", filled" : view === "cross" ? ", crossed" : "";
+  return `Row ${r + 1}, column ${c + 1}${state}`;
 }
 
 export interface Board {
@@ -70,6 +77,10 @@ export function createBoard(config: BoardConfig): Board {
     class: "board-cells",
     style: { gridTemplateColumns: colsTemplate, gridTemplateRows: rowsTemplate },
   });
+  if (config.interactive) {
+    cellsEl.setAttribute("role", "group");
+    cellsEl.setAttribute("aria-label", config.gridLabel ?? "Puzzle grid");
+  }
   const cellEls: HTMLElement[][] = [];
   for (let r = 0; r < height; r++) {
     const row: HTMLElement[] = [];
@@ -79,7 +90,12 @@ export function createBoard(config: BoardConfig): Board {
         dataset: { r: String(r), c: String(c) },
         style: { ["--i" as string]: String(r * width + c) },
       });
-      if (config.interactive) cell.setAttribute("type", "button");
+      if (config.interactive) {
+        cell.setAttribute("type", "button");
+        cell.setAttribute("aria-label", cellLabel(r, c, "empty"));
+        cell.setAttribute("aria-pressed", "false");
+        cell.tabIndex = r === 0 && c === 0 ? 0 : -1; // roving tabindex
+      }
       if ((c + 1) % 5 === 0 && c + 1 < width) cell.classList.add("major-col");
       if ((r + 1) % 5 === 0 && r + 1 < height) cell.classList.add("major-row");
       cellsEl.append(cell);
@@ -107,7 +123,7 @@ export function createBoard(config: BoardConfig): Board {
     const availH = Math.max(260, window.innerHeight * 0.6);
     const byW = availW / (width + 0.62 * maxRowClue);
     const byH = availH / (height + 0.62 * maxColClue);
-    const size = Math.max(15, Math.min(64, Math.floor(Math.min(byW, byH) * 0.98)));
+    const size = Math.max(18, Math.min(64, Math.floor(Math.min(byW, byH) * 0.98)));
     element.style.setProperty("--cell", `${size}px`);
   }
 
@@ -118,6 +134,10 @@ export function createBoard(config: BoardConfig): Board {
         const cell = cellEls[r][c];
         cell.classList.toggle("filled", view === "filled");
         cell.classList.toggle("cross", view === "cross");
+        if (config.interactive) {
+          cell.setAttribute("aria-label", cellLabel(r, c, view));
+          cell.setAttribute("aria-pressed", view === "filled" ? "true" : "false");
+        }
         if (config.isMistake) cell.classList.toggle("mistake", config.isMistake(r, c));
       }
     }

@@ -40,7 +40,7 @@ export function renderExplainer(host: HTMLElement, puzzle: Puzzle): Cleanup {
         el("h1", { text: `Solving “${puzzle.title}”` }),
         el("div", { class: "play-sub" }, [progress]),
       ]),
-      el("div", {}),
+      el("div", { class: "header-spacer" }),
     ]),
     el("div", { class: "board-wrap" }, [board.element]),
     caption,

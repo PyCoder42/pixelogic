@@ -69,12 +69,22 @@ try {
   check("hint highlights a cell", (await page.locator(".cell.hinted").count()) >= 1);
   await page.screenshot({ path: `${SHOTS}/02-play.png`, fullPage: true });
 
-  // reveal -> win
+  // solve it for real -> "Solved!" win
+  await page.click(".seg:has-text('Fill')");
+  const plusCells = [
+    [0, 2], [1, 2], [2, 1], [2, 2], [2, 3], [2, 4], [3, 2], [4, 2],
+  ]; // (2,0) is already filled from earlier
+  for (const [r, c] of plusCells) await page.click(`.cell[data-r="${r}"][data-c="${c}"]`);
+  await page.waitForSelector(".win-overlay:not(.hidden)", { timeout: 4000 });
+  check("solving triggers Solved! overlay", (await page.textContent(".win-card h2"))?.trim() === "Solved!");
+  await page.screenshot({ path: `${SHOTS}/03-win.png` });
+
+  // reveal path on a fresh puzzle shows "Revealed" (it must not count as a solve)
+  await page.goto(`${BASE}#/play/smiley`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".board-cells");
   await page.click(".btn:has-text('Reveal')");
   await page.waitForSelector(".win-overlay:not(.hidden)", { timeout: 4000 });
-  const winText = await page.textContent(".win-card h2");
-  check("reveal triggers win overlay", winText?.trim() === "Solved!");
-  await page.screenshot({ path: `${SHOTS}/03-win.png` });
+  check("reveal shows Revealed (not Solved!)", (await page.textContent(".win-card h2"))?.trim() === "Revealed");
 
   // ---------- Editor ----------
   console.log("Editor:");

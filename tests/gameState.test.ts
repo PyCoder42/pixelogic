@@ -65,4 +65,19 @@ describe("GameState", () => {
     gs.setCell(0, 0, UNKNOWN); // already unknown
     expect(gs.canUndo()).toBe(false);
   });
+
+  it("batch applies many changes as one undo and one notification", () => {
+    const gs = new GameState(puzzle);
+    let notifications = 0;
+    gs.subscribe(() => notifications++);
+    gs.batch(true, () => {
+      gs.setCell(0, 0, FILLED, false);
+      gs.setCell(1, 1, FILLED, false);
+    });
+    expect(notifications).toBe(1); // single notify for the whole batch
+    expect(gs.isSolved()).toBe(true);
+    gs.undo(); // one undo reverts the whole batch
+    expect(gs.marks[0][0]).toBe(UNKNOWN);
+    expect(gs.marks[1][1]).toBe(UNKNOWN);
+  });
 });

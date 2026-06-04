@@ -23,6 +23,7 @@ export class GameState {
 
   private elapsedBase = 0;
   private runningSince: number | null = null;
+  private suspendDepth = 0;
 
   constructor(puzzle: Puzzle, initialMarks?: Cell[][], elapsedMs = 0) {
     this.puzzle = puzzle;
@@ -37,7 +38,27 @@ export class GameState {
   }
 
   private notify(): void {
+    if (this.suspendDepth > 0) return;
     for (const fn of this.subscribers) fn();
+  }
+
+  /**
+   * Apply many cell changes as a single undo entry and a single notification.
+   * Used for bulk operations (reveal, restart) so we don't serialize/repaint
+   * once per cell.
+   */
+  batch(recordHistory: boolean, fn: () => void): void {
+    if (recordHistory) {
+      this.undoStack.push(this.snapshot());
+      this.redoStack = [];
+    }
+    this.suspendDepth++;
+    try {
+      fn();
+    } finally {
+      this.suspendDepth--;
+    }
+    this.notify();
   }
 
   private snapshot(): Cell[][] {

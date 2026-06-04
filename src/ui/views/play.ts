@@ -1,4 +1,4 @@
-import { UNKNOWN, FILLED, EMPTY, type Cell, type Puzzle } from "../../engine/types";
+import { UNKNOWN, FILLED, EMPTY, type Puzzle } from "../../engine/types";
 import { GameState } from "../gameState";
 import { createBoard, playWinReveal, type CellView } from "../render";
 import { attachInput } from "../input";
@@ -8,6 +8,7 @@ import { formatTime, difficultyMeta, sizeLabel } from "../format";
 import {
   loadSave,
   recordProgress,
+  clearProgress,
   markCompleted,
   setSettings,
 } from "../persistence";
@@ -28,6 +29,8 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, fromLibrary: boole
   );
   let mistakeCheck = save.settings.mistakeCheck;
   let solved = false;
+  let revealed = false;
+  let saveTimer: number | null = null;
 
   const cellView = (r: number, c: number): CellView =>
     state.marks[r][c] === FILLED ? "filled" : state.marks[r][c] === EMPTY ? "cross" : "empty";
@@ -41,6 +44,7 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, fromLibrary: boole
     isMistake: (r, c) => mistakeCheck && state.marks[r][c] === FILLED && !puzzle.solution[r][c],
     dimSatisfied: true,
     interactive: true,
+    gridLabel: `${puzzle.title} — ${puzzle.height} by ${puzzle.width} nonogram grid`,
   });
 
   const detachInput = attachInput(board, state);
@@ -118,10 +122,17 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, fromLibrary: boole
 
   // ---- win overlay ----
   const winTime = el("p", { class: "win-time" });
-  const winOverlay = el("div", { class: "win-overlay hidden" }, [
+  const winHeading = el("h2", { text: "Solved!" });
+  const winOverlay = el(
+    "div",
+    {
+      class: "win-overlay hidden",
+      attrs: { role: "dialog", "aria-modal": "true", "aria-label": "Puzzle solved" },
+    },
+    [
     el("div", { class: "win-card" }, [
       el("div", { class: "win-emoji", text: "🎉" }),
-      el("h2", { text: "Solved!" }),
+      winHeading,
       winTime,
       el("div", { class: "win-actions" }, [
         el("button", { class: "btn primary", text: "Menu", on: { click: () => navigate("/") } }),
@@ -149,12 +160,30 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, fromLibrary: boole
     crossBtn.classList.toggle("active", state.mode === "cross");
   }
 
+  function scheduleSave(): void {
+    if (!fromLibrary || solved || revealed) return;
+    if (saveTimer !== null) return; // coalesce a burst of changes into one write
+    saveTimer = window.setTimeout(flushSave, 400);
+  }
+  function flushSave(): void {
+    if (saveTimer !== null) {
+      window.clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (!fromLibrary || solved || revealed) return;
+    recordProgress({ puzzleId: puzzle.id, marks: state.marks, elapsedMs: state.elapsedMs() });
+  }
+  function cancelSave(): void {
+    if (saveTimer !== null) {
+      window.clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+  }
+
   function onChange(): void {
     board.refresh();
     refreshControls();
-    if (fromLibrary && !solved) {
-      recordProgress({ puzzleId: puzzle.id, marks: state.marks, elapsedMs: state.elapsedMs() });
-    }
+    scheduleSave();
     if (!solved && state.isSolved()) handleWin();
   }
   state.subscribe(onChange);
@@ -176,21 +205,29 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, fromLibrary: boole
   }
 
   function revealSolution(): void {
+    revealed = true;
+    cancelSave();
     state.pause();
-    for (let r = 0; r < puzzle.height; r++) {
-      for (let c = 0; c < puzzle.width; c++) {
-        const value: Cell = puzzle.solution[r][c] ? FILLED : EMPTY;
-        state.setCell(r, c, value, r === 0 && c === 0);
+    state.batch(true, () => {
+      for (let r = 0; r < puzzle.height; r++) {
+        for (let c = 0; c < puzzle.width; c++) {
+          state.setCell(r, c, puzzle.solution[r][c] ? FILLED : EMPTY, false);
+        }
       }
-    }
+    });
   }
 
   function restart(): void {
-    for (let r = 0; r < puzzle.height; r++) {
-      for (let c = 0; c < puzzle.width; c++) state.setCell(r, c, UNKNOWN, r === 0 && c === 0);
-    }
-    banner.textContent = "";
+    revealed = false;
     solved = false;
+    state.batch(true, () => {
+      for (let r = 0; r < puzzle.height; r++) {
+        for (let c = 0; c < puzzle.width; c++) state.setCell(r, c, UNKNOWN, false);
+      }
+    });
+    cancelSave();
+    if (fromLibrary) clearProgress(puzzle.id);
+    banner.textContent = "";
     winOverlay.classList.add("hidden");
     board.element.classList.remove("solved");
     state.start();
@@ -199,10 +236,18 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, fromLibrary: boole
   function handleWin(): void {
     solved = true;
     state.pause();
-    if (fromLibrary) markCompleted(puzzle.id);
+    cancelSave();
+    // Revealing the answer doesn't count as solving it.
+    if (fromLibrary && !revealed) markCompleted(puzzle.id);
     playWinReveal(board);
-    winTime.textContent = `Time: ${formatTime(state.elapsedMs())}`;
-    window.setTimeout(() => winOverlay.classList.remove("hidden"), 650);
+    winTime.textContent = revealed
+      ? "Revealed"
+      : `Time: ${formatTime(state.elapsedMs())}`;
+    winHeading.textContent = revealed ? "Revealed" : "Solved!";
+    window.setTimeout(() => {
+      winOverlay.classList.remove("hidden");
+      (winOverlay.querySelector(".btn") as HTMLElement | null)?.focus();
+    }, 650);
   }
 
   function goNext(): void {
@@ -220,8 +265,9 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, fromLibrary: boole
 
   return () => {
     window.clearInterval(tick);
+    state.pause();
+    flushSave();
     detachInput();
     board.destroy();
-    state.pause();
   };
 }
