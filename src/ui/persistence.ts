@@ -14,6 +14,8 @@ export interface Progress {
 
 export interface Settings {
   mistakeCheck: boolean;
+  showTimer: boolean;
+  highlightClues: boolean;
 }
 
 export interface SaveData {
@@ -22,6 +24,7 @@ export interface SaveData {
   completed: string[];
   userPuzzles: Puzzle[];
   settings: Settings;
+  tutorialSeen: boolean;
 }
 
 const KEY = "pixelogic.save.v1";
@@ -32,7 +35,8 @@ export function defaultSaveData(): SaveData {
     progress: {},
     completed: [],
     userPuzzles: [],
-    settings: { mistakeCheck: false },
+    settings: { mistakeCheck: false, showTimer: true, highlightClues: true },
+    tutorialSeen: false,
   };
 }
 
@@ -76,6 +80,7 @@ export function loadSave(storage: StorageLike = getStorage()): SaveData {
       completed: Array.isArray(parsed.completed) ? parsed.completed : base.completed,
       userPuzzles: Array.isArray(parsed.userPuzzles) ? parsed.userPuzzles : base.userPuzzles,
       settings: { ...base.settings, ...(parsed.settings ?? {}) },
+      tutorialSeen: parsed.tutorialSeen === true,
     };
   } catch {
     return defaultSaveData();
@@ -128,4 +133,26 @@ export function setSettings(patch: Partial<Settings>, storage: StorageLike = get
   data.settings = { ...data.settings, ...patch };
   writeSave(data, storage);
   return data.settings;
+}
+
+export function getSettings(storage: StorageLike = getStorage()): Settings {
+  return loadSave(storage).settings;
+}
+
+export function isTutorialSeen(storage: StorageLike = getStorage()): boolean {
+  return loadSave(storage).tutorialSeen;
+}
+
+export function setTutorialSeen(seen: boolean, storage: StorageLike = getStorage()): void {
+  const data = loadSave(storage);
+  data.tutorialSeen = seen;
+  writeSave(data, storage);
+}
+
+/** Danger zone: wipe solved/in-progress state. Keeps custom puzzles and settings. */
+export function resetProgress(storage: StorageLike = getStorage()): void {
+  const data = loadSave(storage);
+  data.progress = {};
+  data.completed = [];
+  writeSave(data, storage);
 }

@@ -3,25 +3,22 @@ import { solveLine } from "./lineSolver";
 import { isLineSolvable } from "./solver";
 
 /**
- * Grade a puzzle by the hardest technique required to solve it:
- *  - If pure propagation can't finish, it needs hypothesis/contradiction search
- *    → `hard` (or `expert` for large grids).
- *  - Otherwise grade by effort: how many propagation rounds it took, plus size.
+ * Grade a puzzle by the hardest technique it requires:
+ *  - `expert` (Extra Hard): pure line-solving stalls — it needs
+ *    hypothesis/contradiction reasoning (it is still uniquely solvable).
+ *  - otherwise grade the line-solvable puzzle by effort (rounds) and size.
  */
 export function grade(rowClues: Clue[], colClues: Clue[]): Difficulty {
   const h = rowClues.length;
   const w = colClues.length;
   const area = h * w;
 
-  if (!isLineSolvable(rowClues, colClues)) {
-    return area >= 150 ? "expert" : "hard";
-  }
+  if (!isLineSolvable(rowClues, colClues)) return "expert";
 
   const rounds = countPropagationRounds(rowClues, colClues);
 
-  if (rounds <= 2 && area <= 36) return "easy";
-  if (rounds <= 4 && area <= 120) return "medium";
-  if (area <= 120) return "medium";
+  if (area <= 36) return rounds <= 2 ? "easy" : "medium";
+  if (area <= 120) return rounds <= 4 ? "medium" : "hard";
   return "hard";
 }
 

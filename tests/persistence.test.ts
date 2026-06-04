@@ -7,6 +7,9 @@ import {
   saveUserPuzzle,
   deleteUserPuzzle,
   setSettings,
+  isTutorialSeen,
+  setTutorialSeen,
+  resetProgress,
   defaultSaveData,
   type StorageLike,
 } from "../src/ui/persistence";
@@ -80,5 +83,29 @@ describe("persistence", () => {
     const settings = setSettings({ mistakeCheck: true }, s);
     expect(settings.mistakeCheck).toBe(true);
     expect(loadSave(s).settings.mistakeCheck).toBe(true);
+  });
+
+  it("tracks the tutorial-seen flag", () => {
+    const s = memStore();
+    expect(isTutorialSeen(s)).toBe(false);
+    setTutorialSeen(true, s);
+    expect(isTutorialSeen(s)).toBe(true);
+  });
+
+  it("resetProgress clears completion/progress but keeps custom puzzles and settings", () => {
+    const s = memStore();
+    const { puzzle } = puzzleFromBitmap(["#.", ".#"], "Mine", "mine");
+    saveUserPuzzle(puzzle, s);
+    setSettings({ mistakeCheck: true }, s);
+    recordProgress({ puzzleId: "heart", marks: [[FILLED]], elapsedMs: 5 }, s);
+    markCompleted("smiley", s);
+
+    resetProgress(s);
+
+    const data = loadSave(s);
+    expect(data.completed).toEqual([]);
+    expect(data.progress).toEqual({});
+    expect(data.userPuzzles).toHaveLength(1); // kept
+    expect(data.settings.mistakeCheck).toBe(true); // kept
   });
 });

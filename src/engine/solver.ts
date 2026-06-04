@@ -123,6 +123,33 @@ export function hasUniqueSolution(rowClues: Clue[], colClues: Clue[]): boolean {
   return count === 1 && !capped;
 }
 
+/** Return up to `limit` actual solution grids (booleans). Node-bounded. */
+export function enumerateSolutions(rowClues: Clue[], colClues: Clue[], limit = 2): boolean[][][] {
+  const out: boolean[][][] = [];
+  let nodes = 0;
+  function dfs(grid: Grid): void {
+    if (out.length >= limit) return;
+    if (++nodes > NODE_CAP) return;
+    const res = propagate(rowClues, colClues, grid);
+    if (res.status === "contradiction") return;
+    if (res.status === "solved") {
+      out.push(toBooleans(res.grid));
+      return;
+    }
+    const cell = firstUnknown(res.grid);
+    if (!cell) return;
+    const [r, c] = cell;
+    for (const value of [FILLED, EMPTY] as Cell[]) {
+      if (out.length >= limit) return;
+      const next = res.grid.map((row) => row.slice());
+      next[r][c] = value;
+      dfs(next);
+    }
+  }
+  dfs(makeGrid(rowClues.length, colClues.length));
+  return out;
+}
+
 /**
  * Return a solution grid and whether search beyond pure propagation was needed.
  * Throws if the clues admit no solution at all.

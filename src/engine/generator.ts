@@ -1,6 +1,6 @@
 import type { Puzzle, Difficulty } from "./types";
 import { cluesForGrid } from "./clues";
-import { countSolutionsDetailed } from "./solver";
+import { countSolutionsDetailed, enumerateSolutions } from "./solver";
 import { grade } from "./grader";
 
 /** Parse a `#`/`.` bitmap (any non-`#` char is empty) into a boolean grid. */
@@ -17,6 +17,23 @@ export interface GridAnalysis {
   unique: boolean;
   solutionCount: number;
   difficulty: Difficulty;
+  /** When not unique, a 0-indexed cell whose value differs between two valid
+   *  solutions — a spot the clues fail to pin down. */
+  ambiguity?: { row: number; col: number };
+}
+
+/** Find a cell whose value differs between two valid solutions of these clues. */
+export function findAmbiguity(solution: boolean[][]): { row: number; col: number } | null {
+  const { rowClues, colClues } = cluesForGrid(solution);
+  const sols = enumerateSolutions(rowClues, colClues, 2);
+  if (sols.length < 2) return null;
+  const [a, b] = sols;
+  for (let r = 0; r < a.length; r++) {
+    for (let c = 0; c < a[r].length; c++) {
+      if (a[r][c] !== b[r][c]) return { row: r, col: c };
+    }
+  }
+  return null;
 }
 
 /** Analyze a solution grid for uniqueness and difficulty (used by the editor). */
@@ -25,7 +42,13 @@ export function analyzeGrid(solution: boolean[][]): GridAnalysis {
   const { count, capped } = countSolutionsDetailed(rowClues, colClues, 2);
   const difficulty = grade(rowClues, colClues);
   // If the bounded search was capped we can't certify uniqueness — treat as ambiguous.
-  return { unique: count === 1 && !capped, solutionCount: count, difficulty };
+  const unique = count === 1 && !capped;
+  const result: GridAnalysis = { unique, solutionCount: count, difficulty };
+  if (!unique) {
+    const amb = findAmbiguity(solution);
+    if (amb) result.ambiguity = amb;
+  }
+  return result;
 }
 
 /**
