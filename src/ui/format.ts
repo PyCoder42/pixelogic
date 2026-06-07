@@ -29,6 +29,8 @@ export function difficultyMeta(d: Difficulty): DifficultyMeta {
       return { label: "Hard", className: "diff-hard" };
     case "expert":
       return { label: "Extra Hard", className: "diff-expert" };
+    case "max":
+      return { label: "MAX", className: "diff-max" };
   }
 }
 

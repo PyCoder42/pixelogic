@@ -1,6 +1,10 @@
 import { UNKNOWN, type Cell, type Clue, type Difficulty } from "./types";
 import { solveLine } from "./lineSolver";
 import { isLineSolvable } from "./solver";
+import { cluesForGrid } from "./clues";
+import { isSymmetric } from "./symmetry";
+
+const TIER_ORDER: Difficulty[] = ["easy", "medium", "hard", "expert", "max"];
 
 /**
  * Grade a puzzle by the hardest technique it requires:
@@ -20,6 +24,21 @@ export function grade(rowClues: Clue[], colClues: Clue[]): Difficulty {
   if (area <= 36) return rounds <= 2 ? "easy" : "medium";
   if (area <= 120) return rounds <= 4 ? "medium" : "hard";
   return "hard";
+}
+
+/**
+ * Grade a full solution grid, applying the two whole-picture rules the clue-only
+ * `grade()` can't see:
+ *  - a very large contradiction puzzle (area ≥ 196) is promoted from Extra Hard to Max;
+ *  - a symmetric picture leaks information, so it is capped at Hard.
+ */
+export function gradeGrid(solution: boolean[][]): Difficulty {
+  const { rowClues, colClues } = cluesForGrid(solution);
+  const area = solution.length * (solution[0]?.length ?? 0);
+  let d = grade(rowClues, colClues);
+  if (d === "expert" && area >= 196) d = "max";
+  if (isSymmetric(solution) && TIER_ORDER.indexOf(d) > TIER_ORDER.indexOf("hard")) d = "hard";
+  return d;
 }
 
 /** Number of full row+column sweeps propagation needs to reach its fixpoint. */

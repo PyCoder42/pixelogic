@@ -10,7 +10,8 @@ export type Line = Cell[];
 /** Run lengths of consecutive filled cells in a line. `[]` means no filled cells. */
 export type Clue = number[];
 
-export type Difficulty = "easy" | "medium" | "hard" | "expert";
+/** `expert` is shown as "Extra Hard"; `max` is the curated, brutal top tier. */
+export type Difficulty = "easy" | "medium" | "hard" | "expert" | "max";
 
 export interface Puzzle {
   id: string;
@@ -22,4 +23,6 @@ export interface Puzzle {
   rowClues: Clue[];
   colClues: Clue[];
   difficulty: Difficulty;
+  /** Optional flavour note explaining the title (shown after solving). */
+  note?: string;
 }

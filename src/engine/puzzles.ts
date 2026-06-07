@@ -5,6 +5,10 @@ interface Entry {
   id: string;
   title: string;
   bitmap: string[];
+  /** Force a curated tier (overrides the auto-grader). */
+  difficulty?: Difficulty;
+  /** Flavour note explaining the title. */
+  note?: string;
 }
 
 /**
@@ -385,9 +389,10 @@ const ENTRIES: Entry[] = [
   },
 ];
 
-export const LIBRARY: Puzzle[] = ENTRIES.map(
-  (e) => puzzleFromBitmap(e.bitmap, e.title, e.id).puzzle,
-);
+export const LIBRARY: Puzzle[] = ENTRIES.map((e) => {
+  const { puzzle } = puzzleFromBitmap(e.bitmap, e.title, e.id, e.difficulty);
+  return { ...puzzle, note: e.note };
+});
 
 export function getPuzzle(id: string): Puzzle | undefined {
   return LIBRARY.find((p) => p.id === id);
@@ -397,4 +402,4 @@ export function byDifficulty(d: Difficulty): Puzzle[] {
   return LIBRARY.filter((p) => p.difficulty === d);
 }
 
-export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard", "expert"];
+export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard", "expert", "max"];

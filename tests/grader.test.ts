@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { grade } from "../src/engine/grader";
+import { grade, gradeGrid } from "../src/engine/grader";
 import { cluesForGrid } from "../src/engine/clues";
+import { isLineSolvable } from "../src/engine/solver";
+import { isSymmetric } from "../src/engine/symmetry";
 
 function bits(rows: string[]) {
   return rows.map((r) => [...r].map((c) => c === "#"));
@@ -26,5 +28,24 @@ describe("grade", () => {
     const rowClues = [[1], [1]];
     const colClues = [[1], [1]];
     expect(["hard", "expert"]).toContain(grade(rowClues, colClues));
+  });
+});
+
+describe("gradeGrid", () => {
+  it("caps a symmetric contradiction picture at hard", () => {
+    // Letter A is left-right symmetric AND needs contradiction reasoning. The
+    // base grader calls it expert; the symmetry rule caps it at hard.
+    const letterA = bits([".###.", "#...#", "#####", "#...#", "#...#"]);
+    const { rowClues, colClues } = cluesForGrid(letterA);
+    expect(isSymmetric(letterA)).toBe(true);
+    expect(isLineSolvable(rowClues, colClues)).toBe(false);
+    expect(grade(rowClues, colClues)).toBe("expert");
+    expect(gradeGrid(letterA)).toBe("hard");
+  });
+
+  it("leaves an asymmetric line-solvable picture below expert", () => {
+    const cornerBlock = bits(["###..", "###..", "###..", ".....", "....."]);
+    expect(isSymmetric(cornerBlock)).toBe(false);
+    expect(["easy", "medium", "hard"]).toContain(gradeGrid(cornerBlock));
   });
 });

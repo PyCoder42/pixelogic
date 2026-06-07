@@ -11,6 +11,7 @@ const DIFF_HEADING: Record<Difficulty, string> = {
   medium: "Medium",
   hard: "Hard",
   expert: "Extra Hard",
+  max: "Max",
 };
 
 /** A small icon affordance inside a puzzle card (mouse + keyboard activatable). */
