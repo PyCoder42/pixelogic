@@ -1489,3 +1489,16 @@ button.cell {
 .score-share {
   margin-top: var(--s2);
 }
+
+/* Naming note in the win popup (#19) */
+.win-note {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin: var(--s1) 0 0;
+  line-height: 1.4;
+}
+.win-note:empty {
+  display: none;
+}

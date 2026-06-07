@@ -16,15 +16,15 @@ describe("solveByLogic", () => {
   });
 
   it("solves an Extra-Hard puzzle using a contradiction step", () => {
-    const cat = getPuzzle("cat")!;
-    const { solved, steps } = solveByLogic(cat.rowClues, cat.colClues);
+    const hard = getPuzzle("static")!;
+    const { solved, steps } = solveByLogic(hard.rowClues, hard.colClues);
     expect(solved).toBe(true);
     expect(steps.some((s) => s.technique === "contradiction")).toBe(true);
   });
 
   it("isLogicSolvable agrees", () => {
-    const cat = getPuzzle("cat")!;
-    expect(isLogicSolvable(cat.rowClues, cat.colClues)).toBe(true);
+    const hard = getPuzzle("static")!;
+    expect(isLogicSolvable(hard.rowClues, hard.colClues)).toBe(true);
   });
 });
 

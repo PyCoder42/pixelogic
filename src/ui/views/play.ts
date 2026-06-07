@@ -154,6 +154,7 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   const winHeading = el("h2", { text: "Solved!" });
   const winTime = el("p", { class: "win-time" });
   const winScoreEl = el("p", { class: "win-score" });
+  const winNote = el("p", { class: "win-note" });
   const winActions = el("div", { class: "win-actions" });
   const winClose = el("button", {
     class: "modal-close",
@@ -161,7 +162,7 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     attrs: { type: "button", "aria-label": "Close and admire the picture" },
     on: { click: closeWinOverlay },
   });
-  const winCard = el("div", { class: "win-card" }, [winClose, winEmoji, winHeading, winScoreEl, winTime, winActions]);
+  const winCard = el("div", { class: "win-card" }, [winClose, winEmoji, winHeading, winScoreEl, winTime, winNote, winActions]);
   const winOverlay = el(
     "div",
     { class: "win-overlay hidden", attrs: { role: "dialog", "aria-modal": "true", "aria-label": "Puzzle solved" } },
@@ -411,6 +412,7 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
       }
     }
 
+    winNote.textContent = puzzle.note ? `ℹ ${puzzle.note}` : "";
     winOverlay.setAttribute("aria-label", filledOut ? "Puzzle filled out" : "Puzzle solved");
     winClose.setAttribute("aria-label", filledOut ? "Close" : "Close and admire the picture");
     buildActions(winActions, "popup");
