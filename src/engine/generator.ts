@@ -1,7 +1,7 @@
 import type { Puzzle, Difficulty } from "./types";
 import { cluesForGrid } from "./clues";
 import { countSolutionsDetailed, enumerateSolutions } from "./solver";
-import { grade } from "./grader";
+import { gradeGrid } from "./grader";
 
 /** Parse a `#`/`.` bitmap (any non-`#` char is empty) into a boolean grid. */
 export function bitmapToGrid(rows: string[]): boolean[][] {
@@ -40,7 +40,7 @@ export function findAmbiguity(solution: boolean[][]): { row: number; col: number
 export function analyzeGrid(solution: boolean[][]): GridAnalysis {
   const { rowClues, colClues } = cluesForGrid(solution);
   const { count, capped } = countSolutionsDetailed(rowClues, colClues, 2);
-  const difficulty = grade(rowClues, colClues);
+  const difficulty = gradeGrid(solution);
   // If the bounded search was capped we can't certify uniqueness — treat as ambiguous.
   const unique = count === 1 && !capped;
   const result: GridAnalysis = { unique, solutionCount: count, difficulty };

@@ -289,22 +289,24 @@ const ENTRIES: Entry[] = [
   {
     id: "cat",
     title: "Cat",
+    note: "A cat sitting upright with its tail curled to the right.",
     bitmap: [
       "#........#",
       "##......##",
       "#.#....#.#",
       "#..####..#",
-      "#.#....#.#",
-      "#.#....#.#",
-      "#..####..#",
       "#........#",
-      "##......##",
-      "##########",
+      "#..#..#..#",
+      "#........#",
+      ".#......#.",
+      ".#.....###",
+      ".#######.#",
     ],
   },
   {
     id: "static",
     title: "Static",
+    note: "Named for TV static — there's no picture, just snow you must reason your way through.",
     bitmap: [
       "...#......",
       ".##...##.#",
@@ -321,6 +323,7 @@ const ENTRIES: Entry[] = [
   {
     id: "cipher",
     title: "Cipher",
+    note: "Named because the grid reads like rows of an encrypted message — only logic decodes it.",
     bitmap: [
       "..##..#.##",
       "#.......##",
@@ -337,6 +340,7 @@ const ENTRIES: Entry[] = [
   {
     id: "labyrinth",
     title: "Labyrinth",
+    note: "Named for its maze-like tangle of corridors and dead ends.",
     bitmap: [
       ".#....##.#..",
       ".....#.#.#..",
@@ -355,6 +359,7 @@ const ENTRIES: Entry[] = [
   {
     id: "riddle",
     title: "Riddle",
+    note: "There's no obvious shape — the puzzle itself is the riddle.",
     bitmap: [
       "#..#.#..#.",
       ".##..##.##",
@@ -371,6 +376,7 @@ const ENTRIES: Entry[] = [
   {
     id: "enigma",
     title: "Enigma",
+    note: "Named for the Enigma machine — an inscrutable cipher you crack one forced cell at a time.",
     bitmap: [
       "#.....##.#..#",
       "##.##.##....#",
@@ -385,6 +391,73 @@ const ENTRIES: Entry[] = [
       "#.#....##.###",
       "##.##.##...#.",
       "##.#..###.#..",
+    ],
+  },
+
+  // ---------- MAX (large, brutal, contradiction-heavy — the top tier) ----------
+  {
+    id: "obsidian",
+    title: "Obsidian",
+    note: "A dense slab of black glass — 14×14 with no foothold but pure deduction.",
+    bitmap: [
+      "#.#....#..##..",
+      "..##...##....#",
+      ".......##..##.",
+      "#..#.#.#...##.",
+      "......#.####.#",
+      "..###.#.##....",
+      "#..####...##..",
+      "##...#..#...##",
+      "..##.##.#..#..",
+      "##.#..##.#.##.",
+      "#.#..#...###..",
+      "###.#.#...##..",
+      "###...#.#.###.",
+      "#..#.#.####.##",
+    ],
+  },
+  {
+    id: "leviathan",
+    title: "Leviathan",
+    note: "A 15×15 sea-monster of a grid — vast, and it fights back.",
+    bitmap: [
+      ".....###.#.#..#",
+      ".......####..#.",
+      "##.###.....#.#.",
+      "#...#...#.##..#",
+      ".#.##..#...#...",
+      "#..#.#..###...#",
+      "#..#.#...#.####",
+      "....#.#####..##",
+      "#..#.##.#.#.##.",
+      "..####..#..#.#.",
+      "#.##.##.#.##.##",
+      "..#.####.###..#",
+      ".##..#.###..###",
+      ".#.##..##....##",
+      "#.#.######.#.#.",
+    ],
+  },
+  {
+    id: "nebula",
+    title: "Nebula",
+    note: "Scattered light across 15×15 — find the order hidden in the chaos.",
+    bitmap: [
+      "#.#.##.###.#..#",
+      "###..#.#.#.....",
+      "###..#.#.######",
+      "..##..#.###...#",
+      "##.##.#..#####.",
+      "#.#.#.#.#...#..",
+      ".#.#..#.#.#.##.",
+      ".###.####.....#",
+      "#.#....#.#.##.#",
+      "..#..##..###..#",
+      "###.##.#...####",
+      ".#........##.#.",
+      "...#.##.##.##..",
+      ".#.#.#..#..#...",
+      "..##.#..##...#.",
     ],
   },
 ];
