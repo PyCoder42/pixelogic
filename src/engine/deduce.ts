@@ -37,6 +37,27 @@ function describe(cells: DeducedCell[]): string {
   return parts.join(" and ");
 }
 
+/** A plain-language, undeniably-true reason for a single-line deduction. */
+function lineCaption(
+  kind: "Row" | "Column",
+  index: number,
+  clue: Clue,
+  lineLen: number,
+  cells: DeducedCell[],
+): string {
+  const label = `${kind} ${index + 1}`;
+  const action = describe(cells);
+  if (clue.length === 0) {
+    return `${label}'s clue is 0 — nothing is filled there, so cross every cell (${action}).`;
+  }
+  const sum = clue.reduce((a, b) => a + b, 0);
+  const tight = sum + (clue.length - 1) === lineLen;
+  if (tight) {
+    return `${label}'s clue ${clueText(clue)} fits the line only one way, fixing every cell — ${action}.`;
+  }
+  return `${label}: every placement of clue ${clueText(clue)} that fits what's already known agrees on these cells, so they're forced — ${action}.`;
+}
+
 /**
  * Find the next logical deduction for the current grid. Single-line deductions
  * are preferred (easy to explain). If none remain, a depth-1 contradiction is
@@ -62,7 +83,7 @@ export function deduceStep(rowClues: Clue[], colClues: Clue[], grid: Grid): Dedu
         technique: "line",
         lineType: "row",
         index: r,
-        caption: `Row ${r + 1} (clue ${clueText(rowClues[r])}) → ${describe(cells)}.`,
+        caption: lineCaption("Row", r, rowClues[r], w, cells),
       };
     }
   }
@@ -79,7 +100,7 @@ export function deduceStep(rowClues: Clue[], colClues: Clue[], grid: Grid): Dedu
         technique: "line",
         lineType: "col",
         index: c,
-        caption: `Column ${c + 1} (clue ${clueText(colClues[c])}) → ${describe(cells)}.`,
+        caption: lineCaption("Column", c, colClues[c], h, cells),
       };
     }
   }
@@ -94,7 +115,7 @@ export function deduceStep(rowClues: Clue[], colClues: Clue[], grid: Grid): Dedu
         return {
           cells: [{ r, c, value: EMPTY }],
           technique: "contradiction",
-          caption: `Cell R${r + 1}C${c + 1}: filling it would break a clue, so it must be crossed.`,
+          caption: `Suppose R${r + 1}C${c + 1} were filled: propagating the clues hits a contradiction. So it must be crossed.`,
         };
       }
       const gE = grid.map((row) => row.slice());
@@ -103,7 +124,7 @@ export function deduceStep(rowClues: Clue[], colClues: Clue[], grid: Grid): Dedu
         return {
           cells: [{ r, c, value: FILLED }],
           technique: "contradiction",
-          caption: `Cell R${r + 1}C${c + 1}: crossing it would break a clue, so it must be filled.`,
+          caption: `Suppose R${r + 1}C${c + 1} were crossed: propagating the clues hits a contradiction. So it must be filled.`,
         };
       }
     }

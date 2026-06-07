@@ -13,6 +13,9 @@ export function renderExplainer(host: HTMLElement, puzzle: Puzzle): Cleanup {
   );
   let stepIndex = 0; // number of steps applied
   let timer: number | null = null;
+  let speed = 1; // 0.5× = slower, 2× = faster
+  const BASE_MS = 1600; // deliberately slow so each deduction can be read
+  const intervalMs = (): number => Math.round(BASE_MS / speed);
 
   const cellView = (r: number, c: number): CellView =>
     grid[r][c] === FILLED ? "filled" : grid[r][c] === EMPTY ? "cross" : "empty";
@@ -33,6 +36,30 @@ export function renderExplainer(host: HTMLElement, puzzle: Puzzle): Cleanup {
   const stepBtn = el("button", { class: "btn", text: "Step ▸", on: { click: stepForward } });
   const resetBtn = el("button", { class: "btn ghost", text: "↺ Reset", on: { click: reset } });
 
+  // Speed control (0.5× / 1× / 2×).
+  const speedBtns = ([0.5, 1, 2] as const).map((mult) =>
+    el("button", {
+      class: `seg ${mult === speed ? "active" : ""}`,
+      text: `${mult}×`,
+      attrs: { type: "button" },
+      on: {
+        click: () => {
+          speed = mult;
+          speedBtns.forEach((b, i) => b.classList.toggle("active", [0.5, 1, 2][i] === speed));
+          if (timer !== null) {
+            window.clearInterval(timer);
+            timer = window.setInterval(stepForward, intervalMs());
+          }
+        },
+      },
+    }),
+  );
+  const speedControl = el(
+    "div",
+    { class: "segmented speed-control", attrs: { role: "group", "aria-label": "Playback speed" } },
+    speedBtns,
+  );
+
   const view = el("div", { class: "view explainer" }, [
     el("header", { class: "play-header" }, [
       el("button", { class: "btn ghost back-btn", text: "‹ Back", on: { click: () => navigate(`/play/${encodeURIComponent(puzzle.id)}`) } }),
@@ -46,6 +73,7 @@ export function renderExplainer(host: HTMLElement, puzzle: Puzzle): Cleanup {
     caption,
     el("div", { class: "controls" }, [
       el("div", { class: "control-group" }, [resetBtn, playBtn, stepBtn]),
+      el("div", { class: "control-group" }, [speedControl]),
     ]),
   ]);
   mount(host, view);
@@ -94,7 +122,7 @@ export function renderExplainer(host: HTMLElement, puzzle: Puzzle): Cleanup {
     }
     if (stepIndex >= steps.length) reset();
     playBtn.textContent = "⏸ Pause";
-    timer = window.setInterval(stepForward, 650);
+    timer = window.setInterval(stepForward, intervalMs());
   }
 
   function stopPlay(): void {
