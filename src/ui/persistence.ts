@@ -1,6 +1,6 @@
 import type { Cell, Puzzle } from "../engine/types";
 import { LIBRARY } from "../engine/puzzles";
-import { pixelogicScore } from "../engine/scoring";
+import { pixelogicScore, type AssistTally } from "../engine/scoring";
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -28,6 +28,8 @@ export interface SaveData {
   bestTimes: Record<string, number>;
   /** Best per-puzzle score (0–100) per puzzle id. */
   bestScores: Record<string, number>;
+  /** Assists used in the current (in-progress) attempt, per puzzle id. */
+  assists: Record<string, AssistTally>;
   userPuzzles: Puzzle[];
   settings: Settings;
   tutorialSeen: boolean;
@@ -44,6 +46,7 @@ export function defaultSaveData(): SaveData {
     completed: [],
     bestTimes: {},
     bestScores: {},
+    assists: {},
     userPuzzles: [],
     settings: { mistakeCheck: false, showTimer: true, highlightClues: true },
     tutorialSeen: false,
@@ -97,6 +100,10 @@ export function loadSave(storage: StorageLike = getStorage()): SaveData {
         parsed.bestScores && typeof parsed.bestScores === "object"
           ? (parsed.bestScores as Record<string, number>)
           : base.bestScores,
+      assists:
+        parsed.assists && typeof parsed.assists === "object"
+          ? (parsed.assists as Record<string, AssistTally>)
+          : base.assists,
       userPuzzles: Array.isArray(parsed.userPuzzles) ? parsed.userPuzzles : base.userPuzzles,
       settings: { ...base.settings, ...(parsed.settings ?? {}) },
       tutorialSeen: parsed.tutorialSeen === true,
@@ -131,6 +138,7 @@ export function markCompleted(id: string, storage: StorageLike = getStorage()): 
   const data = loadSave(storage);
   if (!data.completed.includes(id)) data.completed.push(id);
   delete data.progress[id];
+  delete data.assists[id];
   writeSave(data, storage);
 }
 
@@ -188,6 +196,24 @@ export function wasProgressReset(storage: StorageLike = getStorage()): boolean {
   return loadSave(storage).progressReset;
 }
 
+export function getAssists(id: string, storage: StorageLike = getStorage()): AssistTally | undefined {
+  return loadSave(storage).assists[id];
+}
+
+export function setAssists(id: string, tally: AssistTally, storage: StorageLike = getStorage()): void {
+  const data = loadSave(storage);
+  data.assists[id] = tally;
+  writeSave(data, storage);
+}
+
+export function clearAssists(id: string, storage: StorageLike = getStorage()): void {
+  const data = loadSave(storage);
+  if (data.assists[id]) {
+    delete data.assists[id];
+    writeSave(data, storage);
+  }
+}
+
 export function saveUserPuzzle(puzzle: Puzzle, storage: StorageLike = getStorage()): void {
   const data = loadSave(storage);
   const idx = data.userPuzzles.findIndex((p) => p.id === puzzle.id);
@@ -231,6 +257,7 @@ export function resetProgress(storage: StorageLike = getStorage()): void {
   data.completed = [];
   data.bestTimes = {};
   data.bestScores = {};
+  data.assists = {};
   data.progressReset = true;
   writeSave(data, storage);
 }

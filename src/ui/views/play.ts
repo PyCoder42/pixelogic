@@ -1,4 +1,6 @@
 import { UNKNOWN, FILLED, EMPTY, type Puzzle } from "../../engine/types";
+import { isSymmetric } from "../../engine/symmetry";
+import { puzzleScore } from "../../engine/scoring";
 import { GameState } from "../gameState";
 import { createBoard, playWinReveal, type CellView, type BoardConfig } from "../render";
 import { attachInput } from "../input";
@@ -12,8 +14,9 @@ import {
   clearProgress,
   markCompleted,
   recordBestTime,
-  setSettings,
+  recordPuzzleScore,
 } from "../persistence";
+import { ScoreState } from "../scoreState";
 import { openSettings, openRules } from "../settings";
 import { puzzleLink, shareResult } from "../share";
 import { navigate } from "../router";
@@ -22,17 +25,18 @@ import { LIBRARY } from "../../engine/puzzles";
 type Cleanup = () => void;
 
 export interface PlayOptions {
-  /** Built-in puzzle: enables completion tracking + "next puzzle". */
   fromLibrary: boolean;
   /** Set when test-playing an editor draft. Back/overlay return here (not Menu). */
   testReturn?: string;
 }
 
-/** Render the play view for a puzzle. */
 export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions): Cleanup {
   const { fromLibrary, testReturn } = opts;
   const isTest = !!testReturn;
   const isCustomSaved = !fromLibrary && puzzle.id.startsWith("u-");
+  const scored = fromLibrary; // only built-in puzzles feed the Pixelogic Score
+  const symmetric = isSymmetric(puzzle.solution);
+  const area = puzzle.width * puzzle.height;
 
   const save = loadSave();
   const saved = save.progress[puzzle.id];
@@ -41,17 +45,17 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     fromLibrary && saved ? saved.marks : undefined,
     fromLibrary && saved ? saved.elapsedMs : 0,
   );
+  const score = new ScoreState(puzzle.id, puzzle.difficulty, scored);
   let settings = save.settings;
   let mistakeCheck = settings.mistakeCheck;
   let solved = false;
-  let revealed = false;
+  let filledOut = false;
   let saveTimer: number | null = null;
+  let pendingCheck: "square" | "line" | null = null;
 
   const cellView = (r: number, c: number): CellView =>
     state.marks[r][c] === FILLED ? "filled" : state.marks[r][c] === EMPTY ? "cross" : "empty";
 
-  // The config object is captured by the board and re-read on every refresh, so
-  // mutating its fields (e.g. when settings change) takes effect on refresh().
   const boardConfig: BoardConfig = {
     width: puzzle.width,
     height: puzzle.height,
@@ -70,7 +74,6 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   const meta = difficultyMeta(puzzle.difficulty);
   const timerEl = el("span", { class: "timer", text: formatTime(state.elapsedMs()) });
   const timerWrap = el("div", { class: "timer-wrap" }, [timerEl]);
-
   const rulesBtn = el("button", {
     class: "icon-btn",
     text: "❔",
@@ -83,14 +86,11 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     attrs: { type: "button", "aria-label": "Game settings", title: "Settings" },
     on: { click: () => openSettings("game", applySettings) },
   });
-
-  const backLabel = isTest ? "‹ Editor" : "‹ Menu";
   const backBtn = el("button", {
     class: "btn ghost back-btn",
-    text: backLabel,
+    text: isTest ? "‹ Editor" : "‹ Menu",
     on: { click: goBack },
   });
-
   const header = el("header", { class: "play-header" }, [
     backBtn,
     el("div", { class: "play-title" }, [
@@ -98,17 +98,17 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
       el("div", { class: "play-sub" }, [
         el("span", { class: `chip ${meta.className}`, text: meta.label }),
         el("span", { class: "chip muted", text: sizeLabel(puzzle.width, puzzle.height) }),
+        symmetric ? el("span", { class: "chip chip-symmetry", text: "◈ Symmetric" }) : null,
         isTest ? el("span", { class: "chip muted", text: "Test play" }) : null,
       ]),
     ]),
     el("div", { class: "play-tools" }, [rulesBtn, settingsBtn, timerWrap]),
   ]);
 
-  // ---- banner (hints / messages / share) ----
   const banner = el("div", { class: "banner", attrs: { role: "status", "aria-live": "polite" } });
 
-  // ---- controls ----
-  const fillBtn = el("button", { class: "seg active", text: "✏️ Fill", attrs: { type: "button" } });
+  // ---- mode toggle (Paint / Cross — renamed to avoid "fill out the answer") ----
+  const fillBtn = el("button", { class: "seg active", text: "🖌 Paint", attrs: { type: "button" } });
   const crossBtn = el("button", { class: "seg", text: "✕ Cross", attrs: { type: "button" } });
   fillBtn.addEventListener("click", () => state.setMode("fill"));
   crossBtn.addEventListener("click", () => state.setMode("cross"));
@@ -120,50 +120,40 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   const undoBtn = el("button", { class: "btn", text: "↶ Undo", on: { click: () => state.undo() } });
   const redoBtn = el("button", { class: "btn", text: "↷ Redo", on: { click: () => state.redo() } });
 
-  const hintBtn = el("button", { class: "btn", text: "💡 Hint", on: { click: showHint } });
+  // ---- assists ----
+  const hintBtn = el("button", { class: "btn", text: "💡 Hint −20", on: { click: useHint } });
+  const checkSquareBtn = el("button", { class: "btn", text: "🔍 Square −5", on: { click: () => armCheck("square") } });
+  const checkLineBtn = el("button", { class: "btn", text: "🔍 Line −15", on: { click: () => armCheck("line") } });
+  const checkBoardBtn = el("button", { class: "btn", text: "🔍 Board −40", on: { click: checkBoard } });
+  const fillOutBtn = el("button", { class: "btn ghost", text: "Fill out", on: { click: fillOut } });
+  const explainBtn = el("button", { class: "btn", text: "🧠 Watch solve", on: { click: watchSolve } });
+  const restartBtn = el("button", { class: "btn ghost", text: "↺ Restart", on: { click: restart } });
 
-  const mistakeBtn = el("button", {
-    class: `btn toggle ${mistakeCheck ? "on" : ""}`,
-    text: "🔎 Check mistakes",
-    on: {
-      click: () => {
-        mistakeCheck = !mistakeCheck;
-        setSettings({ mistakeCheck });
-        mistakeBtn.classList.toggle("on", mistakeCheck);
-        board.refresh();
-      },
-    },
-  });
-
-  const explainBtn = el("button", {
-    class: "btn",
-    text: "🧠 Watch solve",
-    on: { click: () => navigate(`/explain/${encodeURIComponent(puzzle.id)}`) },
-  });
-
-  const solveBtn = el("button", {
-    class: "btn ghost",
-    text: "Reveal",
-    on: { click: revealSolution },
-  });
-
-  const restartBtn = el("button", {
-    class: "btn ghost",
-    text: "↺ Restart",
-    on: { click: restart },
-  });
+  const assistMeter = el("div", { class: "assist-meter", attrs: { "aria-live": "polite" } });
 
   const controls = el("div", { class: "controls" }, [
     modeToggle,
     el("div", { class: "control-group" }, [undoBtn, redoBtn]),
-    el("div", { class: "control-group" }, [hintBtn, mistakeBtn]),
-    el("div", { class: "control-group" }, [explainBtn, solveBtn, restartBtn]),
+    el("div", { class: "control-group" }, [hintBtn, checkSquareBtn, checkLineBtn, checkBoardBtn]),
+    el("div", { class: "control-group" }, [explainBtn, fillOutBtn, restartBtn]),
+    assistMeter,
   ]);
+
+  // ---- post-solve bar (shown after closing the win popup) ----
+  const postSolveBar = el("div", { class: "controls post-solve hidden" });
+
+  // ---- symmetry footer (#11) ----
+  const symmetryFooter = symmetric
+    ? el("div", { class: "symmetry-strip", attrs: { role: "note" } }, [
+        el("span", { text: "◈ Symmetric puzzle — its halves mirror each other, so each deduction does double duty." }),
+      ])
+    : null;
 
   // ---- win overlay ----
   const winEmoji = el("div", { class: "win-emoji", text: "🎉" });
   const winHeading = el("h2", { text: "Solved!" });
   const winTime = el("p", { class: "win-time" });
+  const winScoreEl = el("p", { class: "win-score" });
   const winActions = el("div", { class: "win-actions" });
   const winClose = el("button", {
     class: "modal-close",
@@ -171,13 +161,10 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     attrs: { type: "button", "aria-label": "Close and admire the picture" },
     on: { click: closeWinOverlay },
   });
-  const winCard = el("div", { class: "win-card" }, [winClose, winEmoji, winHeading, winTime, winActions]);
+  const winCard = el("div", { class: "win-card" }, [winClose, winEmoji, winHeading, winScoreEl, winTime, winActions]);
   const winOverlay = el(
     "div",
-    {
-      class: "win-overlay hidden",
-      attrs: { role: "dialog", "aria-modal": "true", "aria-label": "Puzzle solved" },
-    },
+    { class: "win-overlay hidden", attrs: { role: "dialog", "aria-modal": "true", "aria-label": "Puzzle solved" } },
     [winCard],
   );
 
@@ -186,11 +173,13 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     el("div", { class: "board-wrap" }, [board.element]),
     banner,
     controls,
+    postSolveBar,
+    symmetryFooter,
     winOverlay,
   ]);
   mount(host, layout);
 
-  // ---- behaviour ----
+  // ====================================================================
   function goBack(): void {
     navigate(isTest ? testReturn! : "/");
   }
@@ -198,7 +187,6 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   function applySettings(): void {
     settings = getSettings();
     mistakeCheck = settings.mistakeCheck;
-    mistakeBtn.classList.toggle("on", mistakeCheck);
     boardConfig.dimSatisfied = settings.highlightClues;
     timerWrap.classList.toggle("hidden", !settings.showTimer);
     board.refresh();
@@ -209,11 +197,28 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     redoBtn.toggleAttribute("disabled", !state.canRedo());
     fillBtn.classList.toggle("active", state.mode === "fill");
     crossBtn.classList.toggle("active", state.mode === "cross");
+    const left = score.squaresLeft();
+    checkSquareBtn.textContent = left === Infinity ? "🔍 Square −5" : `🔍 Square −5 (${Math.max(0, left)})`;
+    checkSquareBtn.toggleAttribute("disabled", !score.canCheckSquare());
+    updateAssistMeter();
+  }
+
+  function updateAssistMeter(): void {
+    if (!scored) {
+      assistMeter.textContent = "";
+      return;
+    }
+    if (score.voided()) {
+      assistMeter.textContent = "⚠ No score this attempt (Fill out / Watch solve used) — Restart for a clean run.";
+      return;
+    }
+    const p = score.penalty();
+    assistMeter.textContent = p > 0 ? `Assists used: −${p} to your score` : "Clean solve — no assists yet";
   }
 
   function scheduleSave(): void {
-    if (!fromLibrary || solved || revealed) return;
-    if (saveTimer !== null) return; // coalesce a burst of changes into one write
+    if (!fromLibrary || solved) return;
+    if (saveTimer !== null) return;
     saveTimer = window.setTimeout(flushSave, 400);
   }
   function flushSave(): void {
@@ -221,7 +226,7 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
       window.clearTimeout(saveTimer);
       saveTimer = null;
     }
-    if (!fromLibrary || solved || revealed) return;
+    if (!fromLibrary || solved) return;
     recordProgress({ puzzleId: puzzle.id, marks: state.marks, elapsedMs: state.elapsedMs() });
   }
   function cancelSave(): void {
@@ -239,24 +244,99 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   }
   state.subscribe(onChange);
 
-  function showHint(): void {
+  // ---- hint ----
+  function useHint(): void {
     const hint = nextHint(puzzle, state.marks);
     if (!hint) {
       banner.textContent = state.isSolved() ? "Already solved! 🎉" : "No further logical step found.";
       return;
     }
+    if (scored) {
+      score.useHint();
+      updateAssistMeter();
+    }
     banner.textContent = `💡 ${hint.reason}`;
-    const cell = board.cellsEl.querySelector<HTMLElement>(
-      `.cell[data-r="${hint.row}"][data-c="${hint.col}"]`,
-    );
+    flashCell(hint.row, hint.col, "hinted", 1600);
+  }
+
+  // ---- checks ----
+  function armCheck(kind: "square" | "line"): void {
+    if (kind === "square" && !score.canCheckSquare()) {
+      banner.textContent = "No more square checks at this difficulty.";
+      return;
+    }
+    pendingCheck = kind;
+    board.cellsEl.classList.add("checking");
+    banner.textContent =
+      kind === "square" ? "Tap a square to reveal it (−5)." : "Tap a cell to reveal its row & column (−15).";
+  }
+
+  function onCheckClick(e: PointerEvent): void {
+    if (!pendingCheck) return;
+    const cell = (e.target as HTMLElement).closest<HTMLElement>(".cell");
+    if (!cell || cell.dataset.r === undefined) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const r = Number(cell.dataset.r);
+    const c = Number(cell.dataset.c);
+    const kind = pendingCheck;
+    pendingCheck = null;
+    board.cellsEl.classList.remove("checking");
+    if (kind === "square") {
+      if (scored && !score.useCheckSquare()) return;
+      state.setCell(r, c, truthAt(r, c), true);
+      flashCell(r, c, "revealed", 700);
+      banner.textContent = "";
+    } else {
+      if (scored) score.useCheckLine();
+      state.batch(true, () => {
+        for (let cc = 0; cc < puzzle.width; cc++) state.setCell(r, cc, truthAt(r, cc), false);
+        for (let rr = 0; rr < puzzle.height; rr++) state.setCell(rr, c, truthAt(rr, c), false);
+      });
+      for (let cc = 0; cc < puzzle.width; cc++) flashCell(r, cc, "revealed", 700);
+      for (let rr = 0; rr < puzzle.height; rr++) flashCell(rr, c, "revealed", 700);
+      banner.textContent = "";
+    }
+    updateAssistMeter();
+    refreshControls();
+  }
+
+  function truthAt(r: number, c: number) {
+    return puzzle.solution[r][c] ? FILLED : EMPTY;
+  }
+
+  function checkBoard(): void {
+    const wrong: Array<[number, number]> = [];
+    for (let r = 0; r < puzzle.height; r++) {
+      for (let c = 0; c < puzzle.width; c++) {
+        if (state.marks[r][c] === FILLED && !puzzle.solution[r][c]) wrong.push([r, c]);
+      }
+    }
+    if (scored) score.useCheckBoard();
+    if (wrong.length === 0) {
+      banner.textContent = "No mistakes so far. ✓";
+    } else {
+      state.batch(true, () => {
+        for (const [r, c] of wrong) state.setCell(r, c, UNKNOWN, false);
+      });
+      for (const [r, c] of wrong) flashCell(r, c, "revealed", 900);
+      banner.textContent = `Cleared ${wrong.length} mistaken ${wrong.length === 1 ? "cell" : "cells"}.`;
+    }
+    updateAssistMeter();
+  }
+
+  function flashCell(r: number, c: number, cls: string, ms: number): void {
+    const cell = board.cellsEl.querySelector<HTMLElement>(`.cell[data-r="${r}"][data-c="${c}"]`);
     if (cell) {
-      cell.classList.add("hinted");
-      window.setTimeout(() => cell.classList.remove("hinted"), 1600);
+      cell.classList.add(cls);
+      window.setTimeout(() => cell.classList.remove(cls), ms);
     }
   }
 
-  function revealSolution(): void {
-    revealed = true;
+  // ---- fill out (voids) ----
+  function fillOut(): void {
+    filledOut = true;
+    if (scored) score.voidAttempt();
     cancelSave();
     state.pause();
     state.batch(true, () => {
@@ -268,9 +348,15 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     });
   }
 
+  function watchSolve(): void {
+    if (scored) score.voidAttempt();
+    navigate(`/explain/${encodeURIComponent(puzzle.id)}`);
+  }
+
   function restart(): void {
-    revealed = false;
+    filledOut = false;
     solved = false;
+    score.reset();
     state.batch(true, () => {
       for (let r = 0; r < puzzle.height; r++) {
         for (let c = 0; c < puzzle.width; c++) state.setCell(r, c, UNKNOWN, false);
@@ -281,80 +367,118 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     banner.textContent = "";
     winOverlay.classList.add("hidden");
     board.element.classList.remove("solved");
+    controls.classList.remove("hidden");
+    postSolveBar.classList.add("hidden");
     state.start();
+    refreshControls();
   }
 
-  function buildWinActions(): void {
-    winActions.replaceChildren();
-    const shareBtn = el("button", {
-      class: "btn",
-      text: "🔗 Share",
-      on: { click: () => doShare(shareBtn) },
-    });
-
-    if (isTest) {
-      winActions.append(
-        el("button", {
-          class: "btn primary",
-          text: "‹ Back to editor",
-          on: { click: () => navigate(testReturn!) },
-        }),
-        el("button", { class: "btn ghost", text: "Admire", on: { click: closeWinOverlay } }),
-      );
-      return;
-    }
-
-    if (!revealed) winActions.append(shareBtn);
-
-    if (fromLibrary) {
-      winActions.append(
-        el("button", { class: "btn primary", text: "Next puzzle →", on: { click: goNext } }),
-      );
-    } else if (isCustomSaved) {
-      winActions.append(
-        el("button", {
-          class: "btn primary",
-          text: "✏️ Edit",
-          on: { click: () => navigate(`/editor/${encodeURIComponent(puzzle.id)}`) },
-        }),
-      );
-    }
-    winActions.append(
-      el("button", { class: "btn ghost", text: "Menu", on: { click: () => navigate("/") } }),
-    );
-  }
+  // ---- win ----
+  let lastScore: { value: number; isNew: boolean } | null = null;
 
   function handleWin(): void {
     solved = true;
     state.pause();
     cancelSave();
-    // Revealing the answer doesn't count as solving it.
-    if (fromLibrary && !revealed) markCompleted(puzzle.id);
+    pendingCheck = null;
+    board.cellsEl.classList.remove("checking");
     playWinReveal(board);
     const elapsed = state.elapsedMs();
-    if (revealed) {
-      winTime.textContent = "Revealed";
-    } else if (fromLibrary) {
-      const { best, isNew } = recordBestTime(puzzle.id, elapsed);
-      winTime.textContent = isNew
-        ? `🏅 New best — ${formatTime(elapsed)}`
-        : `Time ${formatTime(elapsed)} · Best ${formatTime(best)}`;
+    lastScore = null;
+
+    if (filledOut) {
+      winHeading.textContent = "Filled out";
+      winEmoji.textContent = "🧩";
+      winScoreEl.textContent = "";
+      winTime.textContent = "No score — you used Fill out.";
     } else {
-      winTime.textContent = `Time: ${formatTime(elapsed)}`;
+      winHeading.textContent = "Solved!";
+      winEmoji.textContent = "🎉";
+      if (fromLibrary) markCompleted(puzzle.id);
+      if (scored) {
+        const sc = puzzleScore({ difficulty: puzzle.difficulty, area, bestTimeMs: elapsed, assists: score.tally_() });
+        const rec = recordPuzzleScore(puzzle.id, sc);
+        lastScore = { value: sc, isNew: rec.isNew && sc > 0 };
+        const time = recordBestTime(puzzle.id, elapsed);
+        score.finish();
+        winScoreEl.textContent = score.voided()
+          ? "Score: 0 (assisted)"
+          : `Score: ${sc}/100${lastScore.isNew ? " · best yet!" : ""}`;
+        winTime.textContent = time.isNew ? `🏅 New best time — ${formatTime(elapsed)}` : `Time ${formatTime(elapsed)} · Best ${formatTime(time.best)}`;
+      } else {
+        winScoreEl.textContent = "";
+        winTime.textContent = `Time: ${formatTime(elapsed)}`;
+      }
     }
-    winHeading.textContent = revealed ? "Revealed" : "Solved!";
-    winEmoji.textContent = revealed ? "🧩" : "🎉";
-    // Keep the accessible names honest on the reveal path.
-    winOverlay.setAttribute("aria-label", revealed ? "Solution revealed" : "Puzzle solved");
-    winClose.setAttribute("aria-label", revealed ? "Close" : "Close and admire the picture");
-    buildWinActions();
+
+    winOverlay.setAttribute("aria-label", filledOut ? "Puzzle filled out" : "Puzzle solved");
+    winClose.setAttribute("aria-label", filledOut ? "Close" : "Close and admire the picture");
+    buildActions(winActions, "popup");
     window.setTimeout(() => {
       winOverlay.classList.remove("hidden");
       (winOverlay.querySelector(".win-actions .btn") as HTMLElement | null)?.focus();
     }, 650);
   }
 
-  /** Esc closes the win dialog; Tab is trapped inside the card. */
+  /** Build the action buttons for either the popup or the post-solve bar. */
+  function buildActions(into: HTMLElement, where: "popup" | "bar"): void {
+    into.replaceChildren();
+    const shareBtn = el("button", { class: "btn", text: "🔗 Share", on: { click: () => doShare(shareBtn) } });
+    if (isTest) {
+      into.append(
+        el("button", { class: "btn primary", text: "‹ Back to editor", on: { click: () => navigate(testReturn!) } }),
+        where === "popup"
+          ? el("button", { class: "btn ghost", text: "Admire", on: { click: closeWinOverlay } })
+          : el("button", { class: "btn ghost", text: "↺ Try again", on: { click: restart } }),
+      );
+      return;
+    }
+    if (!filledOut) into.append(shareBtn);
+    if (fromLibrary) {
+      into.append(el("button", { class: "btn primary", text: "Next puzzle →", on: { click: goNext } }));
+    } else if (isCustomSaved) {
+      into.append(
+        el("button", { class: "btn primary", text: "✏️ Edit", on: { click: () => navigate(`/editor/${encodeURIComponent(puzzle.id)}`) } }),
+      );
+    }
+    if (where === "bar") into.append(el("button", { class: "btn", text: "↺ Play again", on: { click: restart } }));
+    into.append(el("button", { class: "btn ghost", text: "Menu", on: { click: () => navigate("/") } }));
+  }
+
+  function closeWinOverlay(): void {
+    winOverlay.classList.add("hidden");
+    // Swap the solving tools for a clean post-solve bar so Next is one tap away.
+    controls.classList.add("hidden");
+    buildActions(postSolveBar, "bar");
+    postSolveBar.classList.remove("hidden");
+    banner.replaceChildren();
+    if (!filledOut && scored && lastScore) {
+      banner.textContent = `🎉 Solved · Score ${lastScore.value}/100`;
+    }
+    (postSolveBar.querySelector(".btn") as HTMLElement | null)?.focus();
+  }
+
+  async function doShare(btn: HTMLElement): Promise<void> {
+    const url = puzzleLink(puzzle, fromLibrary);
+    const scoreBit = !filledOut && scored && lastScore ? ` (scored ${lastScore.value}/100)` : "";
+    const text = `I solved “${puzzle.title}” on Pixelogic in ${formatTime(state.elapsedMs())}${scoreBit}! ▦`;
+    const outcome = await shareResult(text, url);
+    if (outcome === "copied") {
+      const old = btn.textContent;
+      btn.textContent = "✓ Link copied!";
+      window.setTimeout(() => (btn.textContent = old), 1800);
+    } else if (outcome === "failed") {
+      banner.textContent = "Couldn't open share — copy the link from the address bar.";
+    }
+  }
+
+  function goNext(): void {
+    const idx = LIBRARY.findIndex((p) => p.id === puzzle.id);
+    const next = LIBRARY[(idx + 1) % LIBRARY.length];
+    navigate(`/play/${encodeURIComponent(next.id)}`);
+  }
+
+  // ---- win-dialog keyboard a11y ----
   function onWinKey(e: KeyboardEvent): void {
     if (winOverlay.classList.contains("hidden")) return;
     if (e.key === "Escape") {
@@ -363,9 +487,9 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
       return;
     }
     if (e.key !== "Tab") return;
-    const f = Array.from(
-      winCard.querySelectorAll<HTMLElement>('button, [tabindex]:not([tabindex="-1"])'),
-    ).filter((n) => !n.hasAttribute("disabled") && n.offsetParent !== null);
+    const f = Array.from(winCard.querySelectorAll<HTMLElement>('button, [tabindex]:not([tabindex="-1"])')).filter(
+      (n) => !n.hasAttribute("disabled") && n.offsetParent !== null,
+    );
     if (f.length === 0) {
       e.preventDefault();
       return;
@@ -385,46 +509,9 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     }
   }
   document.addEventListener("keydown", onWinKey);
+  board.cellsEl.addEventListener("pointerdown", onCheckClick, true); // capture before paint
 
-  /** Close the win popup to admire the finished picture; leave a share affordance. */
-  function closeWinOverlay(): void {
-    winOverlay.classList.add("hidden");
-    banner.replaceChildren();
-    if (revealed) {
-      banner.textContent = "Revealed — try the next one!";
-    } else {
-      const msg = el("span", { text: `🎉 Solved in ${formatTime(state.elapsedMs())}. ` });
-      const shareBtn = el("button", {
-        class: "btn small",
-        text: "🔗 Share result",
-        on: { click: () => doShare(shareBtn) },
-      });
-      banner.append(msg, shareBtn);
-    }
-    // Always return focus to a stable, visible control (not the hidden ✕).
-    backBtn.focus();
-  }
-
-  async function doShare(btn: HTMLElement): Promise<void> {
-    const url = puzzleLink(puzzle, fromLibrary);
-    const text = `I solved “${puzzle.title}” on Pixelogic in ${formatTime(state.elapsedMs())}! ▦ Can you?`;
-    const outcome = await shareResult(text, url);
-    if (outcome === "copied") {
-      const old = btn.textContent;
-      btn.textContent = "✓ Link copied!";
-      window.setTimeout(() => (btn.textContent = old), 1800);
-    } else if (outcome === "failed") {
-      banner.textContent = "Couldn't open share — copy the link from the address bar.";
-    }
-  }
-
-  function goNext(): void {
-    const idx = LIBRARY.findIndex((p) => p.id === puzzle.id);
-    const next = LIBRARY[(idx + 1) % LIBRARY.length];
-    navigate(`/play/${encodeURIComponent(next.id)}`);
-  }
-
-  // timer tick
+  // ---- start ----
   applySettings();
   state.start();
   refreshControls();
@@ -435,6 +522,7 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   return () => {
     window.clearInterval(tick);
     document.removeEventListener("keydown", onWinKey);
+    board.cellsEl.removeEventListener("pointerdown", onCheckClick, true);
     state.pause();
     flushSave();
     detachInput();
