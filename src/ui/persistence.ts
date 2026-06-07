@@ -1,4 +1,6 @@
 import type { Cell, Puzzle } from "../engine/types";
+import { LIBRARY } from "../engine/puzzles";
+import { pixelogicScore } from "../engine/scoring";
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -24,9 +26,13 @@ export interface SaveData {
   completed: string[];
   /** Fastest solve time (ms) per puzzle id. */
   bestTimes: Record<string, number>;
+  /** Best per-puzzle score (0–100) per puzzle id. */
+  bestScores: Record<string, number>;
   userPuzzles: Puzzle[];
   settings: Settings;
   tutorialSeen: boolean;
+  /** True once progress has ever been wiped — disclosed when sharing a score. */
+  progressReset: boolean;
 }
 
 const KEY = "pixelogic.save.v1";
@@ -37,9 +43,11 @@ export function defaultSaveData(): SaveData {
     progress: {},
     completed: [],
     bestTimes: {},
+    bestScores: {},
     userPuzzles: [],
     settings: { mistakeCheck: false, showTimer: true, highlightClues: true },
     tutorialSeen: false,
+    progressReset: false,
   };
 }
 
@@ -85,9 +93,14 @@ export function loadSave(storage: StorageLike = getStorage()): SaveData {
         parsed.bestTimes && typeof parsed.bestTimes === "object"
           ? (parsed.bestTimes as Record<string, number>)
           : base.bestTimes,
+      bestScores:
+        parsed.bestScores && typeof parsed.bestScores === "object"
+          ? (parsed.bestScores as Record<string, number>)
+          : base.bestScores,
       userPuzzles: Array.isArray(parsed.userPuzzles) ? parsed.userPuzzles : base.userPuzzles,
       settings: { ...base.settings, ...(parsed.settings ?? {}) },
       tutorialSeen: parsed.tutorialSeen === true,
+      progressReset: parsed.progressReset === true,
     };
   } catch {
     return defaultSaveData();
@@ -143,6 +156,38 @@ export function getBestTime(id: string, storage: StorageLike = getStorage()): nu
   return loadSave(storage).bestTimes[id];
 }
 
+/** Record a per-puzzle score (0–100), keeping the best. Returns the kept best
+ *  and whether this beat the previous record. */
+export function recordPuzzleScore(
+  id: string,
+  score: number,
+  storage: StorageLike = getStorage(),
+): { best: number; isNew: boolean } {
+  const data = loadSave(storage);
+  const prev = data.bestScores[id];
+  const isNew = prev === undefined || score > prev;
+  if (isNew) {
+    data.bestScores[id] = score;
+    writeSave(data, storage);
+    return { best: score, isNew: true };
+  }
+  return { best: prev, isNew: false };
+}
+
+export function getPuzzleScore(id: string, storage: StorageLike = getStorage()): number | undefined {
+  return loadSave(storage).bestScores[id];
+}
+
+/** The overall Pixelogic Score (0–1600) across the built-in library. */
+export function getPixelogicScore(storage: StorageLike = getStorage()): number {
+  const best = loadSave(storage).bestScores;
+  return pixelogicScore(best, LIBRARY.map((p) => ({ id: p.id, difficulty: p.difficulty })));
+}
+
+export function wasProgressReset(storage: StorageLike = getStorage()): boolean {
+  return loadSave(storage).progressReset;
+}
+
 export function saveUserPuzzle(puzzle: Puzzle, storage: StorageLike = getStorage()): void {
   const data = loadSave(storage);
   const idx = data.userPuzzles.findIndex((p) => p.id === puzzle.id);
@@ -178,11 +223,14 @@ export function setTutorialSeen(seen: boolean, storage: StorageLike = getStorage
   writeSave(data, storage);
 }
 
-/** Danger zone: wipe solved/in-progress state and records. Keeps custom puzzles and settings. */
+/** Danger zone: wipe solved/in-progress state and records. Keeps custom puzzles and
+ *  settings. Sets a permanent flag so a shared Pixelogic Score can disclose the reset. */
 export function resetProgress(storage: StorageLike = getStorage()): void {
   const data = loadSave(storage);
   data.progress = {};
   data.completed = [];
   data.bestTimes = {};
+  data.bestScores = {};
+  data.progressReset = true;
   writeSave(data, storage);
 }

@@ -6,6 +6,10 @@ import {
   markCompleted,
   recordBestTime,
   getBestTime,
+  recordPuzzleScore,
+  getPuzzleScore,
+  getPixelogicScore,
+  wasProgressReset,
   saveUserPuzzle,
   deleteUserPuzzle,
   setSettings,
@@ -102,6 +106,7 @@ describe("persistence", () => {
     recordProgress({ puzzleId: "heart", marks: [[FILLED]], elapsedMs: 5 }, s);
     markCompleted("smiley", s);
     recordBestTime("smiley", 4200, s);
+    recordPuzzleScore("smiley", 88, s);
 
     resetProgress(s);
 
@@ -109,8 +114,25 @@ describe("persistence", () => {
     expect(data.completed).toEqual([]);
     expect(data.progress).toEqual({});
     expect(data.bestTimes).toEqual({});
+    expect(data.bestScores).toEqual({});
+    expect(data.progressReset).toBe(true); // disclosed when sharing a score
     expect(data.userPuzzles).toHaveLength(1); // kept
     expect(data.settings.mistakeCheck).toBe(true); // kept
+  });
+
+  it("records the best per-puzzle score and computes a Pixelogic Score", () => {
+    const s = memStore();
+    expect(getPuzzleScore("heart", s)).toBeUndefined();
+    expect(wasProgressReset(s)).toBe(false);
+
+    expect(recordPuzzleScore("heart", 70, s)).toEqual({ best: 70, isNew: true });
+    expect(recordPuzzleScore("heart", 60, s)).toEqual({ best: 70, isNew: false }); // keeps max
+    expect(recordPuzzleScore("heart", 95, s)).toEqual({ best: 95, isNew: true });
+    expect(getPuzzleScore("heart", s)).toBe(95);
+
+    // A real library id contributes to the overall rating (0 with nothing solved).
+    expect(getPixelogicScore(memStore())).toBe(0);
+    expect(getPixelogicScore(s)).toBeGreaterThan(0);
   });
 
   it("records only the fastest best time and reports new records", () => {
