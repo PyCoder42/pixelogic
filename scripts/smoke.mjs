@@ -14,7 +14,7 @@ function check(name, cond) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SEEN = JSON.stringify({
   version: 1, progress: {}, completed: [], bestTimes: {}, bestScores: {}, assists: {},
-  userPuzzles: [], settings: { mistakeCheck: false, showTimer: true, highlightClues: true },
+  userPuzzles: [], settings: { mistakeCheck: false, showTimer: true, clueStyle: "grey", autoCross: false },
   tutorialSeen: true, progressReset: false,
 });
 const PLUS = [[0, 2], [1, 2], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [3, 2], [4, 2]];
@@ -69,7 +69,7 @@ try {
   const headings = await page.locator(".section-title").allTextContents();
   check("Extra Hard + Max sections exist", headings.some((h) => /Extra Hard/.test(h)) && headings.some((h) => /Max/.test(h)));
   check("library cards show a score pill", (await page.locator(".puzzle-card .score-pill").count()) > 0);
-  check("some card shows a symmetry chip", (await page.locator(".puzzle-card .chip-symmetry").count()) > 0);
+  check("some card shows a symmetry chip", (await page.locator(".puzzle-card .chip-symmetric").count()) > 0);
   await page.screenshot({ path: `${SHOTS}/02-menu.png`, fullPage: true });
 
   // settings scopes
@@ -93,7 +93,7 @@ try {
   check("Check Square/Line/Board buttons present", (await page.locator(".btn:has-text('Square')").count()) === 1 && (await page.locator(".btn:has-text('Line')").count()) === 1 && (await page.locator(".btn:has-text('Board')").count()) === 1);
   check("old 'Check mistakes' button removed", (await page.locator(".btn:has-text('Check mistakes')").count()) === 0);
   check("assist meter present", (await page.locator(".assist-meter").count()) === 1);
-  check("rules + settings tools in header", (await page.locator(".play-tools .icon-btn").count()) === 2);
+  check("rules + settings + prev/next tools in header", (await page.locator(".play-tools .icon-btn").count()) === 4);
 
   // Hint costs 20
   await page.click(".btn:has-text('Hint')");
@@ -139,7 +139,7 @@ try {
   await page.goto(`${BASE}#/play/heart`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".board-cells");
   check("symmetric puzzle shows the cyan bottom strip", (await page.locator(".symmetry-strip").count()) === 1);
-  check("symmetric puzzle shows header chip", (await page.locator(".play-sub .chip-symmetry").count()) === 1);
+  check("symmetric puzzle shows header chip", (await page.locator(".play-sub .chip-symmetric").count()) === 1);
   check("empty 0-clue row is greyed", await page.locator(".row-clue[data-r='9']").evaluate((e) => e.classList.contains("done")));
   await page.click('.cell[data-r="9"][data-c="0"]');
   await sleep(80);
@@ -189,6 +189,72 @@ try {
   await page.click(".manage-bar .btn:has-text('Delete selected')");
   await sleep(200);
   check("Delete selected removes the puzzle", (await page.locator(".my-puzzles").count()) === 0);
+
+  // =============== v3: header order, badges, About, settings, autoCross, prev/next ===============
+  console.log("v3:");
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".view.menu");
+  // #2: score block sits AFTER the tagline and BEFORE the action buttons
+  check("score block is below the tagline", await page.evaluate(() => {
+    const tag = document.querySelector(".tagline");
+    const score = document.querySelector(".score-block");
+    return !!tag && !!score && !!(tag.compareDocumentPosition(score) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }));
+  check("action buttons are below the score block", await page.evaluate(() => {
+    const score = document.querySelector(".score-block");
+    const actions = document.querySelector(".menu-actions");
+    return !!score && !!actions && !!(score.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }));
+  // #7/#9: re-tuned tiers — Diamond is Medium now, Static is MAX
+  check("Diamond card is Medium", (await page.locator(".puzzle-card:has-text('Diamond') .chip:has-text('Medium')").count()) === 1);
+  check("Static card is MAX", (await page.locator(".puzzle-card:has-text('Static') .chip:has-text('MAX')").count()) === 1);
+  // #6: symmetric chip carries the direction detail
+  check("symmetric chips name the mirror direction", (await page.locator(".chip-symmetric").first().textContent())?.includes("·"));
+  check("patterned + named chips exist", (await page.locator(".chip-patterned").count()) > 0 && (await page.locator(".chip-named").count()) > 0);
+  // #3: clicking a badge chip opens its filter page
+  await page.locator(".puzzle-card .chip-symmetric").first().click();
+  await page.waitForSelector(".view.badge-list", { timeout: 4000 });
+  check("badge chip opens the badge page", /#\/badge\/symmetric$/.test(page.url()));
+  check("badge page has back button + title", (await page.locator(".back-btn").count()) === 1 && (await page.textContent("h1"))?.includes("Symmetric"));
+  check("badge page hides empty tiers", (await page.locator(".badge-list .menu-section .chip:has-text('MAX')").count()) === 0);
+  check("badge page shows matching cards", (await page.locator(".badge-list .puzzle-card").count()) > 5);
+  await page.goto(`${BASE}#/badge/patterned`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".view.badge-list");
+  check("patterned badge page renders", (await page.textContent("h1"))?.includes("Patterned"));
+  // #5/#9: About page
+  await page.goto(`${BASE}#/about`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".view.about", { timeout: 4000 });
+  check("About page renders sections", (await page.locator(".about-section").count()) >= 5);
+  const aboutText = await page.textContent(".view.about");
+  check("About explains difficulty + AI + score", /what-if/i.test(aboutText) && /AI/.test(aboutText) && /1,?600/.test(aboutText));
+  // #8: prev/next from within a puzzle
+  await page.goto(`${BASE}#/play/smiley`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".board-cells");
+  const beforeTitle = await page.textContent(".play-title h1");
+  await page.click(".play-tools .icon-btn[aria-label='Next puzzle']");
+  await page.waitForFunction((t) => document.querySelector(".play-title h1")?.textContent !== t, beforeTitle, { timeout: 4000 });
+  check("next-puzzle arrow moves to another puzzle unsolved", true);
+  await page.click(".play-tools .icon-btn[aria-label='Previous puzzle']");
+  await page.waitForFunction((t) => document.querySelector(".play-title h1")?.textContent === t, beforeTitle, { timeout: 4000 });
+  check("prev-puzzle arrow returns", true);
+  // #1: settings — clue-style select + auto-cross toggle; autoCross behavior
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".view.menu");
+  await page.click(".menu-tools .icon-btn[aria-label='Settings']");
+  await page.waitForSelector(".settings-modal");
+  check("settings has the completed-clues select", (await page.locator(".settings-modal .setting-select").count()) === 1);
+  check("settings has the auto-cross toggle", (await page.locator(".settings-modal .switch").count()) === 3);
+  check("old dim-clues toggle is gone", !(await page.textContent(".settings-modal"))?.includes("Dim solved"));
+  // turn auto-cross ON via its switch (3rd row), pick strike style, then verify in play
+  await page.locator(".settings-modal .switch").nth(2).click();
+  await page.selectOption(".settings-modal .setting-select", "strike");
+  await page.click(".settings-modal .modal-close");
+  await page.goto(`${BASE}#/play/plus`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".board-cells");
+  await page.click('.cell[data-r="0"][data-c="2"]'); // row 0 clue [1] now met
+  await sleep(250);
+  check("autoCross crosses the rest of a met line", (await page.locator('.cell[data-r="0"][data-c="0"].cross').count()) === 1);
+  check("clue style attribute reflects the setting", (await page.locator('.board[data-clue-style="strike"]').count()) === 1);
 
   // =============== Mobile ===============
   console.log("Mobile:");
