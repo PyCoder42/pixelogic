@@ -50,6 +50,20 @@ describe("persistence", () => {
     expect(loadSave(s)).toEqual(defaultSaveData());
   });
 
+  it("migrates the old highlightClues boolean to clueStyle", () => {
+    const s = memStore();
+    const old = { ...defaultSaveData(), settings: { mistakeCheck: true, showTimer: true, highlightClues: false } };
+    s.setItem("pixelogic.save.v1", JSON.stringify(old));
+    const loaded = loadSave(s);
+    expect(loaded.settings.clueStyle).toBe("none"); // false → no styling
+    expect(loaded.settings.mistakeCheck).toBe(true); // other settings preserved
+    expect(loaded.settings.autoCross).toBe(false); // new setting gets its default
+
+    const oldOn = { ...defaultSaveData(), settings: { mistakeCheck: false, showTimer: true, highlightClues: true } };
+    s.setItem("pixelogic.save.v1", JSON.stringify(oldOn));
+    expect(loadSave(s).settings.clueStyle).toBe("grey"); // true → default grey
+  });
+
   it("resets on a wrong version", () => {
     const s = memStore();
     s.setItem("pixelogic.save.v1", JSON.stringify({ version: 99 }));

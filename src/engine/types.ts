@@ -25,4 +25,6 @@ export interface Puzzle {
   difficulty: Difficulty;
   /** Optional flavour note explaining the title (shown after solving). */
   note?: string;
+  /** True when the title plainly describes the picture (earns the Name-hint badge). */
+  named?: boolean;
 }

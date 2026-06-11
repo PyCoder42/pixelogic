@@ -462,9 +462,22 @@ const ENTRIES: Entry[] = [
   },
 ];
 
+// Titles that deliberately do NOT describe their picture (the abstract tiers
+// keep their secrets); everything else earns the Name-hint badge.
+const ABSTRACT_IDS = new Set([
+  "static",
+  "cipher",
+  "labyrinth",
+  "riddle",
+  "enigma",
+  "obsidian",
+  "leviathan",
+  "nebula",
+]);
+
 export const LIBRARY: Puzzle[] = ENTRIES.map((e) => {
   const { puzzle } = puzzleFromBitmap(e.bitmap, e.title, e.id, e.difficulty);
-  return { ...puzzle, note: e.note };
+  return { ...puzzle, note: e.note, named: !ABSTRACT_IDS.has(e.id) };
 });
 
 export function getPuzzle(id: string): Puzzle | undefined {

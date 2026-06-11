@@ -1,5 +1,6 @@
 import type { Clue } from "../engine/types";
 import { cluesForLine } from "../engine/clues";
+import type { ClueStyle } from "./persistence";
 import { el } from "./dom";
 
 export type CellView = "filled" | "cross" | "empty";
@@ -11,8 +12,8 @@ export interface BoardConfig {
   colClues: Clue[];
   getCell: (r: number, c: number) => CellView;
   isMistake?: (r: number, c: number) => boolean;
-  /** Dim a clue once its line's filled runs match it (play mode). */
-  dimSatisfied?: boolean;
+  /** How to draw a clue once its line's filled runs match it ("none" = unchanged). */
+  satisfiedStyle?: ClueStyle;
   /** Adds button semantics + data attributes used by input handling. */
   interactive?: boolean;
   /** Accessible name for the grid (interactive boards). */
@@ -141,10 +142,13 @@ export function createBoard(config: BoardConfig): Board {
         if (config.isMistake) cell.classList.toggle("mistake", config.isMistake(r, c));
       }
     }
-    // Clues have exactly two states: "done" (grey — the line's filled runs match
-    // the clue) and not-done (dark — not yet met, including a 0-clue line that
-    // wrongly has filled cells). When dimming is off, force every clue not-done.
-    if (config.dimSatisfied) {
+    // Clues have exactly two states: "done" (the line's filled runs match the
+    // clue) and not-done (including a 0-clue line that wrongly has filled
+    // cells). HOW a done clue is drawn (grey/strike/hide) is the board's
+    // data-clue-style attribute, driven by the user's setting; "none" clears it.
+    const style = config.satisfiedStyle ?? "none";
+    element.dataset.clueStyle = style;
+    if (style !== "none") {
       for (let r = 0; r < height; r++) {
         const filled = Array.from({ length: width }, (_, c) => config.getCell(r, c) === "filled");
         rowClueEls[r].classList.toggle("done", clueEquals(cluesForLine(filled), rowClues[r]));

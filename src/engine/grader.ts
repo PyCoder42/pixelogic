@@ -1,43 +1,60 @@
 import { UNKNOWN, type Cell, type Clue, type Difficulty } from "./types";
 import { solveLine } from "./lineSolver";
 import { isLineSolvable } from "./solver";
+import { solveByLogic } from "./deduce";
 import { cluesForGrid } from "./clues";
 import { isSymmetric } from "./symmetry";
+import { detectPatterned } from "./badges";
 
 const TIER_ORDER: Difficulty[] = ["easy", "medium", "hard", "expert", "max"];
 
+function capAt(d: Difficulty, cap: Difficulty): Difficulty {
+  return TIER_ORDER.indexOf(d) > TIER_ORDER.indexOf(cap) ? cap : d;
+}
+
 /**
- * Grade a puzzle by the hardest technique it requires:
- *  - `expert` (Extra Hard): pure line-solving stalls — it needs
- *    hypothesis/contradiction reasoning (it is still uniquely solvable).
- *  - otherwise grade the line-solvable puzzle by effort (rounds) and size.
+ * Grade by reasoning effort, judged from the clues alone:
+ *  - line-solvable puzzles are graded by how many full propagation sweeps a
+ *    deduction-only solver needs (size doesn't matter — a big trivial picture
+ *    is still easy);
+ *  - puzzles where pure line logic stalls need hypothesis/contradiction
+ *    reasoning and start at `expert`.
+ * `gradeGrid` refines this with whole-picture rules (symmetry, pattern, Max).
  */
 export function grade(rowClues: Clue[], colClues: Clue[]): Difficulty {
-  const h = rowClues.length;
-  const w = colClues.length;
-  const area = h * w;
-
   if (!isLineSolvable(rowClues, colClues)) return "expert";
-
   const rounds = countPropagationRounds(rowClues, colClues);
-
-  if (area <= 36) return rounds <= 2 ? "easy" : "medium";
-  if (area <= 120) return rounds <= 4 ? "medium" : "hard";
+  if (rounds <= 2) return "easy";
+  if (rounds <= 4) return "medium";
   return "hard";
 }
 
 /**
- * Grade a full solution grid, applying the two whole-picture rules the clue-only
- * `grade()` can't see:
- *  - a very large contradiction puzzle (area ≥ 196) is promoted from Extra Hard to Max;
- *  - a symmetric picture leaks information, so it is capped at Hard.
+ * Grade a full solution grid:
+ *  - contradiction puzzles are split into Extra Hard vs Max by total reasoning
+ *    effort (how many what-if proofs, how many forced steps, how long the lines);
+ *  - a symmetric picture leaks information → capped at Hard;
+ *  - a patterned picture (one run per line) is mostly "continue the shape" →
+ *    capped at Medium.
  */
 export function gradeGrid(solution: boolean[][]): Difficulty {
   const { rowClues, colClues } = cluesForGrid(solution);
   const area = solution.length * (solution[0]?.length ?? 0);
-  let d = grade(rowClues, colClues);
-  if (d === "expert" && area >= 196) d = "max";
-  if (isSymmetric(solution) && TIER_ORDER.indexOf(d) > TIER_ORDER.indexOf("hard")) d = "hard";
+
+  let d: Difficulty;
+  if (isLineSolvable(rowClues, colClues)) {
+    d = grade(rowClues, colClues);
+  } else {
+    const { steps } = solveByLogic(rowClues, colClues);
+    const contradictions = steps.filter((s) => s.technique === "contradiction").length;
+    // Effort blends the number of what-if proofs (weighted heavily — each is a
+    // full sub-deduction), the sheer number of forced steps, and the line size.
+    const effort = steps.length + 15 * contradictions + area / 2;
+    d = effort >= 200 ? "max" : "expert";
+  }
+
+  if (isSymmetric(solution)) d = capAt(d, "hard");
+  if (detectPatterned(solution)) d = capAt(d, "medium");
   return d;
 }
 

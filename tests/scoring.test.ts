@@ -73,6 +73,16 @@ describe("pixelogicScore", () => {
   it("uses the documented weights", () => {
     expect(DIFFICULTY_WEIGHT).toEqual({ easy: 1, medium: 2, hard: 4, expert: 7, max: 12 });
   });
+  it("badge multipliers shift a puzzle's share without breaking the 1600 ceiling", () => {
+    const badged = [
+      { id: "e", difficulty: "easy" as const, weightMult: 0.5 }, // easier-badged: worth half
+      { id: "x", difficulty: "expert" as const },
+    ];
+    // perfect everywhere is still a perfect 1600 (both sides scale together)
+    expect(pixelogicScore({ e: 100, x: 100 }, badged)).toBe(1600);
+    // the badged easy is now 0.5 of 7.5 total → 1600*0.5/7.5 ≈ 107 (vs 200 unbadged)
+    expect(pixelogicScore({ e: 100 }, badged)).toBe(Math.round((1600 * 0.5) / 7.5));
+  });
 });
 
 describe("checkBudget", () => {

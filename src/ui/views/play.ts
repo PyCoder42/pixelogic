@@ -1,6 +1,7 @@
-import { UNKNOWN, FILLED, EMPTY, type Puzzle } from "../../engine/types";
-import { isSymmetric } from "../../engine/symmetry";
+import { UNKNOWN, FILLED, EMPTY, type Puzzle, type Clue } from "../../engine/types";
 import { puzzleScore } from "../../engine/scoring";
+import { puzzleBadges } from "../../engine/badges";
+import { cluesForLine } from "../../engine/clues";
 import { GameState } from "../gameState";
 import { createBoard, playWinReveal, type CellView, type BoardConfig } from "../render";
 import { attachInput } from "../input";
@@ -35,7 +36,8 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   const isTest = !!testReturn;
   const isCustomSaved = !fromLibrary && puzzle.id.startsWith("u-");
   const scored = fromLibrary; // only built-in puzzles feed the Pixelogic Score
-  const symmetric = isSymmetric(puzzle.solution);
+  const badges = puzzleBadges(puzzle);
+  const symmetricBadge = badges.find((b) => b.key === "symmetric");
   const area = puzzle.width * puzzle.height;
 
   const save = loadSave();
@@ -63,7 +65,7 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     colClues: puzzle.colClues,
     getCell: cellView,
     isMistake: (r, c) => mistakeCheck && state.marks[r][c] === FILLED && !puzzle.solution[r][c],
-    dimSatisfied: settings.highlightClues,
+    satisfiedStyle: settings.clueStyle,
     interactive: true,
     gridLabel: `${puzzle.title} — ${puzzle.height} by ${puzzle.width} nonogram grid`,
   };
@@ -91,6 +93,35 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     text: isTest ? "‹ Editor" : "‹ Menu",
     on: { click: goBack },
   });
+
+  /** A clickable badge chip linking to that badge's filter page. */
+  const badgeChip = (b: { key: string; label: string }): HTMLElement =>
+    el("button", {
+      class: `chip chip-badge chip-${b.key}`,
+      text: b.label,
+      attrs: { type: "button", "aria-label": `See all ${b.key} puzzles` },
+      on: { click: () => navigate(`/badge/${b.key}`) },
+    });
+
+  // Prev / next library navigation — works any time, solved or not (#8).
+  const libIndex = LIBRARY.findIndex((p) => p.id === puzzle.id);
+  const navTo = (offset: number): void => {
+    const next = LIBRARY[(libIndex + offset + LIBRARY.length) % LIBRARY.length];
+    navigate(`/play/${encodeURIComponent(next.id)}`);
+  };
+  const prevBtn = el("button", {
+    class: "icon-btn",
+    text: "←",
+    attrs: { type: "button", "aria-label": "Previous puzzle", title: "Previous puzzle" },
+    on: { click: () => navTo(-1) },
+  });
+  const nextNavBtn = el("button", {
+    class: "icon-btn",
+    text: "→",
+    attrs: { type: "button", "aria-label": "Next puzzle", title: "Next puzzle" },
+    on: { click: () => navTo(1) },
+  });
+
   const header = el("header", { class: "play-header" }, [
     backBtn,
     el("div", { class: "play-title" }, [
@@ -98,11 +129,17 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
       el("div", { class: "play-sub" }, [
         el("span", { class: `chip ${meta.className}`, text: meta.label }),
         el("span", { class: "chip muted", text: sizeLabel(puzzle.width, puzzle.height) }),
-        symmetric ? el("span", { class: "chip chip-symmetry", text: "◈ Symmetric" }) : null,
+        ...badges.map(badgeChip),
         isTest ? el("span", { class: "chip muted", text: "Test play" }) : null,
       ]),
     ]),
-    el("div", { class: "play-tools" }, [rulesBtn, settingsBtn, timerWrap]),
+    el("div", { class: "play-tools" }, [
+      fromLibrary && libIndex >= 0 ? prevBtn : null,
+      fromLibrary && libIndex >= 0 ? nextNavBtn : null,
+      rulesBtn,
+      settingsBtn,
+      timerWrap,
+    ]),
   ]);
 
   const banner = el("div", { class: "banner", attrs: { role: "status", "aria-live": "polite" } });
@@ -142,10 +179,18 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   // ---- post-solve bar (shown after closing the win popup) ----
   const postSolveBar = el("div", { class: "controls post-solve hidden" });
 
-  // ---- symmetry footer (#11) ----
-  const symmetryFooter = symmetric
+  // ---- symmetry footer (#11) — names the mirror direction, links to the badge page ----
+  const symmetryFooter = symmetricBadge
     ? el("div", { class: "symmetry-strip", attrs: { role: "note" } }, [
-        el("span", { text: "◈ Symmetric puzzle — its halves mirror each other, so each deduction does double duty." }),
+        el("span", {
+          text: `${symmetricBadge.label} — its halves mirror each other, so each deduction does double duty. `,
+        }),
+        el("button", {
+          class: "strip-link",
+          text: "See all symmetric puzzles ›",
+          attrs: { type: "button" },
+          on: { click: () => navigate("/badge/symmetric") },
+        }),
       ])
     : null;
 
@@ -188,7 +233,7 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
   function applySettings(): void {
     settings = getSettings();
     mistakeCheck = settings.mistakeCheck;
-    boardConfig.dimSatisfied = settings.highlightClues;
+    boardConfig.satisfiedStyle = settings.clueStyle;
     timerWrap.classList.toggle("hidden", !settings.showTimer);
     board.refresh();
   }
@@ -237,7 +282,40 @@ export function renderPlay(host: HTMLElement, puzzle: Puzzle, opts: PlayOptions)
     }
   }
 
+  // Auto-cross (setting): once a line's filled runs match its clue, cross the
+  // leftover cells. Guarded so the batch's own notification doesn't recurse.
+  let autoCrossing = false;
+  function applyAutoCross(): void {
+    if (!settings.autoCross || autoCrossing || solved || filledOut) return;
+    const clueMet = (filled: boolean[], clue: Clue): boolean => {
+      const got = cluesForLine(filled);
+      return got.length === clue.length && got.every((v, i) => v === clue[i]);
+    };
+    const targets: Array<[number, number]> = [];
+    for (let r = 0; r < puzzle.height; r++) {
+      const filled = state.marks[r].map((m) => m === FILLED);
+      if (!clueMet(filled, puzzle.rowClues[r])) continue;
+      for (let c = 0; c < puzzle.width; c++) if (state.marks[r][c] === UNKNOWN) targets.push([r, c]);
+    }
+    for (let c = 0; c < puzzle.width; c++) {
+      const filled = state.marks.map((row) => row[c] === FILLED);
+      if (!clueMet(filled, puzzle.colClues[c])) continue;
+      for (let r = 0; r < puzzle.height; r++) if (state.marks[r][c] === UNKNOWN) targets.push([r, c]);
+    }
+    if (targets.length === 0) return;
+    autoCrossing = true;
+    try {
+      state.batch(false, () => {
+        for (const [r, c] of targets) state.setCell(r, c, EMPTY, false);
+      });
+    } finally {
+      autoCrossing = false;
+    }
+    board.refresh();
+  }
+
   function onChange(): void {
+    applyAutoCross();
     board.refresh();
     refreshControls();
     scheduleSave();

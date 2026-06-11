@@ -1,6 +1,6 @@
 import { el } from "./dom";
 import { openModal } from "./modal";
-import { getSettings, setSettings, resetProgress, type Settings } from "./persistence";
+import { getSettings, setSettings, resetProgress, type Settings, type ClueStyle } from "./persistence";
 
 type SettingKey = keyof Settings;
 
@@ -34,6 +34,30 @@ function toggleRow(
   ]);
 }
 
+/** A labelled <select> settings row. */
+function selectRow(
+  label: string,
+  desc: string,
+  options: Array<{ value: string; label: string }>,
+  current: string,
+  onPick: (value: string) => void,
+): HTMLElement {
+  const select = el("select", { class: "setting-select", attrs: { "aria-label": label } }) as HTMLSelectElement;
+  for (const o of options) {
+    const opt = el("option", { text: o.label, attrs: { value: o.value } });
+    if (o.value === current) opt.setAttribute("selected", "");
+    select.append(opt);
+  }
+  select.addEventListener("change", () => onPick(select.value));
+  return el("div", { class: "setting-row" }, [
+    el("div", { class: "setting-text" }, [
+      el("span", { class: "setting-label", text: label }),
+      el("span", { class: "setting-desc", text: desc }),
+    ]),
+    select,
+  ]);
+}
+
 export type SettingsScope = "home" | "game";
 
 /** Open the settings modal. `onChange` fires when any setting changes or progress is reset. */
@@ -42,12 +66,29 @@ export function openSettings(scope: SettingsScope, onChange?: () => void): void 
   const rows: HTMLElement[] = [
     toggleRow("Auto-check mistakes", "Highlight filled cells that don't belong.", "mistakeCheck", settings.mistakeCheck, () => onChange?.()),
     toggleRow("Show timer", "Display the puzzle timer while you play.", "showTimer", settings.showTimer, () => onChange?.()),
+    toggleRow(
+      "Auto-cross finished lines",
+      "When a line's clue is met, cross out its leftover cells for you.",
+      "autoCross",
+      settings.autoCross,
+      () => onChange?.(),
+    ),
+    selectRow(
+      "Completed clues",
+      "How a clue looks once its line is finished.",
+      [
+        { value: "grey", label: "Grey out" },
+        { value: "strike", label: "Strike through" },
+        { value: "hide", label: "Hide them" },
+        { value: "none", label: "Leave them" },
+      ],
+      settings.clueStyle,
+      (value) => {
+        setSettings({ clueStyle: value as ClueStyle });
+        onChange?.();
+      },
+    ),
   ];
-  if (scope === "home") {
-    rows.push(
-      toggleRow("Dim solved clues", "Grey out a clue once its line is satisfied.", "highlightClues", settings.highlightClues, () => onChange?.()),
-    );
-  }
 
   const body = el("div", { class: "settings-body" }, rows);
 
@@ -107,7 +148,7 @@ export function openRules(): void {
       <li><strong>Fill</strong> a cell you're sure belongs to the picture.</li>
       <li><strong>Cross</strong> (✕) a cell you're sure is empty — right-click, or switch to Cross mode.</li>
       <li>A clue like <code>3&nbsp;1</code> means a run of 3, then a gap, then a run of 1.</li>
-      <li>A clue turns grey once that line's filled cells match it.</li>
+      <li>A clue greys out once that line's filled cells match it (change the style in Settings).</li>
     </ul>
     <p>Every Pixelogic puzzle has exactly one solution and can be reached by logic alone —
     no guessing. Stuck? Use <strong>Hint</strong> for the next deduction, or

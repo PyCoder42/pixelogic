@@ -78,7 +78,7 @@ export function renderTutorial(host: HTMLElement): Cleanup {
     rowClues: puzzle.rowClues,
     colClues: puzzle.colClues,
     getCell: cellView,
-    dimSatisfied: true,
+    satisfiedStyle: "grey",
     interactive: true,
     gridLabel: "Tutorial puzzle",
   });

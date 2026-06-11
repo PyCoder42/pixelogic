@@ -70,17 +70,21 @@ export function puzzleScore(opts: {
 export interface PuzzleMeta {
   id: string;
   difficulty: Difficulty;
+  /** Badge weight multiplier (<1 for easier-badge puzzles, >1 for harder ones). */
+  weightMult?: number;
 }
 
 /**
  * Overall Pixelogic Score in [0,1600]: a difficulty-weighted fraction of the
- * total possible score across `library`. Unsolved puzzles count as 0.
+ * total possible score across `library`. Unsolved puzzles count as 0. Badge
+ * multipliers shift how much each puzzle is worth relative to the others —
+ * the perfect total stays 1600 because both sides scale together.
  */
 export function pixelogicScore(bestScores: Record<string, number>, library: PuzzleMeta[]): number {
   let earned = 0;
   let possible = 0;
   for (const p of library) {
-    const w = DIFFICULTY_WEIGHT[p.difficulty];
+    const w = DIFFICULTY_WEIGHT[p.difficulty] * (p.weightMult ?? 1);
     possible += w;
     earned += w * ((bestScores[p.id] ?? 0) / 100);
   }

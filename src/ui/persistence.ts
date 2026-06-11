@@ -1,6 +1,7 @@
 import type { Cell, Puzzle } from "../engine/types";
 import { LIBRARY } from "../engine/puzzles";
 import { pixelogicScore, type AssistTally } from "../engine/scoring";
+import { puzzleBadges, badgeWeightMultiplier } from "../engine/badges";
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -14,10 +15,16 @@ export interface Progress {
   elapsedMs: number;
 }
 
+/** How a clue is drawn once its line is complete. */
+export type ClueStyle = "grey" | "strike" | "hide" | "none";
+
 export interface Settings {
   mistakeCheck: boolean;
   showTimer: boolean;
-  highlightClues: boolean;
+  /** Appearance of a clue whose line is satisfied (replaces the old on/off dim). */
+  clueStyle: ClueStyle;
+  /** Auto-cross the leftover cells of a line once its clue is met. */
+  autoCross: boolean;
 }
 
 export interface SaveData {
@@ -48,7 +55,7 @@ export function defaultSaveData(): SaveData {
     bestScores: {},
     assists: {},
     userPuzzles: [],
-    settings: { mistakeCheck: false, showTimer: true, highlightClues: true },
+    settings: { mistakeCheck: false, showTimer: true, clueStyle: "grey", autoCross: false },
     tutorialSeen: false,
     progressReset: false,
   };
@@ -105,13 +112,29 @@ export function loadSave(storage: StorageLike = getStorage()): SaveData {
           ? (parsed.assists as Record<string, AssistTally>)
           : base.assists,
       userPuzzles: Array.isArray(parsed.userPuzzles) ? parsed.userPuzzles : base.userPuzzles,
-      settings: { ...base.settings, ...(parsed.settings ?? {}) },
+      settings: migrateSettings(parsed.settings, base.settings),
       tutorialSeen: parsed.tutorialSeen === true,
       progressReset: parsed.progressReset === true,
     };
   } catch {
     return defaultSaveData();
   }
+}
+
+/** Merge stored settings over defaults, migrating the old `highlightClues`
+ *  boolean to the richer `clueStyle` (true → grey, false → none). */
+function migrateSettings(stored: unknown, base: Settings): Settings {
+  const raw = (stored ?? {}) as Partial<Settings> & { highlightClues?: boolean };
+  const settings: Settings = { ...base };
+  if (typeof raw.mistakeCheck === "boolean") settings.mistakeCheck = raw.mistakeCheck;
+  if (typeof raw.showTimer === "boolean") settings.showTimer = raw.showTimer;
+  if (typeof raw.autoCross === "boolean") settings.autoCross = raw.autoCross;
+  if (raw.clueStyle === "grey" || raw.clueStyle === "strike" || raw.clueStyle === "hide" || raw.clueStyle === "none") {
+    settings.clueStyle = raw.clueStyle;
+  } else if (raw.highlightClues === false) {
+    settings.clueStyle = "none";
+  }
+  return settings;
 }
 
 export function writeSave(data: SaveData, storage: StorageLike = getStorage()): void {
@@ -189,7 +212,14 @@ export function getPuzzleScore(id: string, storage: StorageLike = getStorage()):
 /** The overall Pixelogic Score (0–1600) across the built-in library. */
 export function getPixelogicScore(storage: StorageLike = getStorage()): number {
   const best = loadSave(storage).bestScores;
-  return pixelogicScore(best, LIBRARY.map((p) => ({ id: p.id, difficulty: p.difficulty })));
+  return pixelogicScore(
+    best,
+    LIBRARY.map((p) => ({
+      id: p.id,
+      difficulty: p.difficulty,
+      weightMult: badgeWeightMultiplier(puzzleBadges(p)),
+    })),
+  );
 }
 
 export function wasProgressReset(storage: StorageLike = getStorage()): boolean {
